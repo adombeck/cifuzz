@@ -24,8 +24,7 @@ import (
 
 func TestMissingCIFuzzProject(t *testing.T) {
 	// Create an empty project directory and change working directory to it
-	testDir, cleanup := testutil.ChdirToTempDir("integrate-cmd-test")
-	defer cleanup()
+	testDir := testutil.ChdirToTempDir(t, "integrate-cmd-test")
 
 	// Check that the command produces the expected error when not
 	// called below a cifuzz project directory.
@@ -46,8 +45,7 @@ func TestMissingCIFuzzProject(t *testing.T) {
 }
 
 func TestSetupGitIgnore(t *testing.T) {
-	testDir, cleanup := testutil.BootstrapExampleProjectForTest("integrate-cmd-test", config.BuildSystemCMake)
-	defer cleanup()
+	testDir := testutil.BootstrapExampleProjectForTest(t, "integrate-cmd-test", config.BuildSystemCMake)
 
 	gitIgnorePath := filepath.Join(testDir, ".gitignore")
 	cmakeListsPath := filepath.Join(testDir, "CMakeLists.txt")
@@ -83,8 +81,7 @@ func TestSetupGitIgnore(t *testing.T) {
 }
 
 func TestSetupCMakePresets(t *testing.T) {
-	testDir, cleanup := testutil.BootstrapExampleProjectForTest("integrate-cmd-test", config.BuildSystemCMake)
-	defer cleanup()
+	testDir := testutil.BootstrapExampleProjectForTest(t, "integrate-cmd-test", config.BuildSystemCMake)
 
 	sourceDir := getRootSourceDirectory(t, testDir)
 	cmakePresets := filepath.Join(sourceDir, "share", "integration", "CMakePresets.json")
@@ -112,8 +109,7 @@ func TestSetupCMakePresets(t *testing.T) {
 }
 
 func TestSetupVSCodeTasks(t *testing.T) {
-	testDir, cleanup := testutil.BootstrapExampleProjectForTest("integrate-cmd-test", config.BuildSystemCMake)
-	defer cleanup()
+	testDir := testutil.BootstrapExampleProjectForTest(t, "integrate-cmd-test", config.BuildSystemCMake)
 
 	sourceDir := getRootSourceDirectory(t, testDir)
 	vscodeTasks := filepath.Join(sourceDir, "share", "integration", "tasks.json")

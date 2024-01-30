@@ -6,11 +6,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"text/tabwriter"
 
 	"github.com/pkg/errors"
 
 	"code-intelligence.com/cifuzz/internal/bundler/archive"
-	"code-intelligence.com/cifuzz/internal/cmdutils"
 	"code-intelligence.com/cifuzz/internal/config"
 	"code-intelligence.com/cifuzz/pkg/log"
 	"code-intelligence.com/cifuzz/pkg/vcs"
@@ -94,6 +94,22 @@ func (b *Bundler) Bundle() (string, error) {
 		}
 	}
 
+	// List contents of archive in verbose mode for easier debugging
+	// when we do not have access to the bundle itself
+	tableBuf := &strings.Builder{}
+	w := tabwriter.NewWriter(tableBuf, 0, 0, 1, ' ', tabwriter.AlignRight)
+	for _, h := range archiveWriter.Headers() {
+		_, err := fmt.Fprintf(w, "%s\t%d\t %s\n", h.FileInfo().Mode().String(), h.Size, h.Name)
+		if err != nil {
+			return "", errors.WithStack(err)
+		}
+	}
+	err = w.Flush()
+	if err != nil {
+		return "", errors.WithStack(err)
+	}
+	log.Debugf("Content of bundle %s:\n%s", bundle.Name(), tableBuf.String())
+
 	err = archiveWriter.Close()
 	if err != nil {
 		return "", errors.WithStack(err)
@@ -128,7 +144,7 @@ func (b *Bundler) createEmptyBundle() (*os.File, error) {
 
 	bundle, err := os.Create(b.opts.OutputPath)
 	if err != nil {
-		return nil, errors.Wrap(errors.WithStack(err), "failed to create fuzzing artifact archive")
+		return nil, errors.Wrap(err, "failed to create fuzzing artifact archive")
 	}
 
 	log.Debugf("Bundle output path: %s", b.opts.OutputPath)
@@ -171,12 +187,15 @@ func (b *Bundler) createMetadataFileInArchive(fuzzers []*archive.Fuzzer, archive
 	metadataYamlPath := filepath.Join(b.opts.tempDir, archive.MetadataFileName)
 	err = os.WriteFile(metadataYamlPath, metadataYamlContent, 0o644)
 	if err != nil {
-		return errors.Wrapf(errors.WithStack(err), "failed to write %s", archive.MetadataFileName)
+		return errors.Wrapf(err, "failed to write %s", archive.MetadataFileName)
 	}
 	err = archiveWriter.WriteFile(archive.MetadataFileName, metadataYamlPath)
 	if err != nil {
 		return err
 	}
+
+	// Print bundle.yaml content for debugging purposes
+	log.Debugf("Content of bundle.yaml:\n%s", metadataYamlContent)
 
 	return nil
 }
@@ -228,45 +247,22 @@ func (b *Bundler) copyAdditionalFilesToArchive(archiveWriter archive.ArchiveWrit
 // getCodeRevision returns the code revision of the project, if it can be
 // determined. If it cannot be determined, nil is returned.
 func (b *Bundler) getCodeRevision() *archive.CodeRevision {
-	var err error
-	var gitCommit string
-	var gitBranch string
-
-	if b.opts.Commit == "" {
-		gitCommit, err = vcs.GitCommit()
-		if err != nil {
-			// if this returns an error (e.g. if users don't have git installed), we
-			// don't want to fail the bundle creation, so we just log that we
-			// couldn't get the git commit and branch and continue without it.
-			log.Debugf("failed to get Git commit. continuing without Git commit and branch. error: %+v",
-				cmdutils.WrapSilentError(err))
-			return nil
+	revision := vcs.CodeRevision()
+	if revision == nil {
+		revision = &archive.CodeRevision{
+			Git: &archive.GitRevision{},
 		}
-	} else {
-		gitCommit = b.opts.Commit
 	}
 
-	if b.opts.Branch == "" {
-		gitBranch, err = vcs.GitBranch()
-		if err != nil {
-			log.Debugf("failed to get Git branch. continuing without Git commit and branch. error: %+v",
-				cmdutils.WrapSilentError(err))
-			return nil
-		}
-	} else {
-		gitBranch = b.opts.Branch
+	if b.opts.Commit != "" {
+		revision.Git.Commit = b.opts.Commit
 	}
 
-	if vcs.GitIsDirty() {
-		log.Warnf("The Git repository has uncommitted changes. Archive metadata may be inaccurate.")
+	if b.opts.Branch != "" {
+		revision.Git.Branch = b.opts.Branch
 	}
 
-	return &archive.CodeRevision{
-		Git: &archive.GitRevision{
-			Commit: gitCommit,
-			Branch: gitBranch,
-		},
-	}
+	return revision
 }
 
 func prepareSeeds(seedCorpusDirs []string, archiveSeedsDir string, archiveWriter archive.ArchiveWriter) error {

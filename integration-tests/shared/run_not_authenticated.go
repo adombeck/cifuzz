@@ -41,7 +41,7 @@ func TestRunNotAuthenticated(t *testing.T, dir string, cifuzz string, args ...st
 		[]string{
 			"run",
 			"--interactive=false",
-			"--server=" + server.Address,
+			"--server=" + server.AddressOnHost(),
 			"--no-notifications",
 			"crashing_fuzz_test",
 		}, args...)
@@ -54,5 +54,5 @@ func TestRunNotAuthenticated(t *testing.T, dir string, cifuzz string, args ...st
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err)
 
-	assert.Contains(t, string(out), "You are not authenticated")
+	assert.Contains(t, string(out), "You are not authenticated with CI Sense.")
 }

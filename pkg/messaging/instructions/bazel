@@ -5,14 +5,6 @@ Add the following to your WORKSPACE file:
 
     %s
 
-    load("@rules_fuzzing//fuzzing:repositories.bzl", "rules_fuzzing_dependencies")
-
-    rules_fuzzing_dependencies()
-
-    load("@rules_fuzzing//fuzzing:init.bzl", "rules_fuzzing_init")
-
-    rules_fuzzing_init()
-
     git_repository(
         name = "cifuzz",
         commit = "%s",

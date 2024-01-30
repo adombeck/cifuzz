@@ -2,10 +2,10 @@ To use jazzer.js, add a dev-dependency to @jazzer.js/jest-runner to your
 project. To do so, execute the following command:
 
     # if you use npm
-    npm install --save-dev @jazzer.js/jest-runner
+    npm install --save-dev @jazzer.js/jest-runner@2.1.0
 
     # or if you use yarn
-    yarn add --dev @jazzer.js/jest-runner
+    yarn add --dev @jazzer.js/jest-runner@2.1.0
 
 
 To integrate with your existing jest setup, please add this to your
@@ -17,7 +17,7 @@ To integrate with your existing jest setup, please add this to your
           displayName: "test",
         },
         {
-          runner: "@jazzer.js/jest-runner",
+          testRunner: "@jazzer.js/jest-runner",
           displayName: {
             name: "Jazzer.js",
             color: "cyan",

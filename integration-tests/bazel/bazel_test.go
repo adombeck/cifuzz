@@ -21,7 +21,6 @@ import (
 	"code-intelligence.com/cifuzz/internal/testutil"
 	"code-intelligence.com/cifuzz/pkg/finding"
 	"code-intelligence.com/cifuzz/pkg/parser/libfuzzer/stacktrace"
-	"code-intelligence.com/cifuzz/util/envutil"
 	"code-intelligence.com/cifuzz/util/executil"
 )
 
@@ -110,17 +109,17 @@ func TestIntegration_Bazel(t *testing.T) {
 
 	t.Run("bundle", func(t *testing.T) {
 		testBundle(t, cifuzzRunner)
+	})
 
+	t.Run("bundleWithAdditionalArgs", func(t *testing.T) {
 		testBundleWithAdditionalArgs(t, cifuzz, testdata)
 	})
 
 	t.Run("remoteRun", func(t *testing.T) {
-		// The remote-run command is currently only supported on Linux
-		if runtime.GOOS != "linux" && !config.AllowUnsupportedPlatforms() {
-			t.Skip()
-		}
 		testRemoteRun(t, cifuzzRunner)
+	})
 
+	t.Run("remoteRunWithAdditionalArgs", func(t *testing.T) {
 		testRemoteRunWithAdditionalArgs(t, cifuzzRunner)
 	})
 
@@ -131,6 +130,10 @@ func TestIntegration_Bazel(t *testing.T) {
 	t.Run("coverageWithAdditionalArgs", func(t *testing.T) {
 		// Run cifuzz coverage with additional args
 		testCoverageWithAdditionalArgs(t, cifuzz, testdata)
+	})
+
+	t.Run("containerRun", func(t *testing.T) {
+		testContainerRun(t, cifuzzRunner)
 	})
 }
 
@@ -278,10 +281,8 @@ func testRun(t *testing.T, cifuzzRunner *shared.CIFuzzRunner) {
 }
 
 func testRunWithAsanOptions(t *testing.T, cifuzzRunner *shared.CIFuzzRunner) {
-	env, err := envutil.Setenv(os.Environ(), "ASAN_OPTIONS", "print_stats=1:atexit=1")
-	require.NoError(t, err)
 	cifuzzRunner.Run(t, &shared.RunOptions{
-		Env:                          env,
+		Env:                          []string{"ASAN_OPTIONS=print_stats=1:atexit=1"},
 		ExpectedOutputs:              []*regexp.Regexp{regexp.MustCompile(`Stats:`)},
 		TerminateAfterExpectedOutput: false,
 	})
@@ -298,16 +299,22 @@ func testBundle(t *testing.T, cifuzzRunner *shared.CIFuzzRunner) {
 }
 
 func testRemoteRun(t *testing.T, cifuzzRunner *shared.CIFuzzRunner) {
+	// The remote-run command is currently only supported on Linux
+	if runtime.GOOS != "linux" && !config.AllowUnsupportedPlatforms() {
+		t.Skip()
+	}
 	cifuzz := cifuzzRunner.CIFuzzPath
 	testdata := cifuzzRunner.DefaultWorkDir
 	shared.TestRemoteRun(t, testdata, cifuzz, "//src/parser:parser_fuzz_test")
 }
 
 func testRemoteRunWithAdditionalArgs(t *testing.T, cifuzzRunner *shared.CIFuzzRunner) {
-	cifuzz := cifuzzRunner.CIFuzzPath
-	testdata := cifuzzRunner.DefaultWorkDir
-	regexp := regexp.MustCompile("Unrecognized option: --non-existent-flag")
-	shared.TestRemoteRunWithAdditionalArgs(t, testdata, cifuzz, regexp, "//src/parser:parser_fuzz_test")
+	// The remote-run command is currently only supported on Linux
+	if runtime.GOOS != "linux" && !config.AllowUnsupportedPlatforms() {
+		t.Skip()
+	}
+	regex := regexp.MustCompile("Unrecognized option: --non-existent-flag")
+	shared.TestRemoteRunWithAdditionalArgs(t, cifuzzRunner, regex, "//src/parser:parser_fuzz_test")
 }
 
 func testCoverage(t *testing.T, cifuzzRunner *shared.CIFuzzRunner) {
@@ -420,4 +427,16 @@ func testLCOVCoverage(t *testing.T, cifuzzRunner *shared.CIFuzzRunner) {
 		// The generated corpus does not contain the crashing inputs.
 		15, 16, 19},
 		uncoveredLines)
+}
+
+func testContainerRun(t *testing.T, cifuzzRunner *shared.CIFuzzRunner) {
+	tag := "cifuzz-test-container-run-bazel:latest"
+
+	shared.BuildDockerImage(t, tag, cifuzzRunner.DefaultWorkDir)
+	shared.TestContainerRun(t, cifuzzRunner, tag, &shared.RunOptions{
+		ExpectedOutputs: []*regexp.Regexp{
+			regexp.MustCompile(`^==\d*==ERROR: AddressSanitizer: heap-use-after-free`),
+			regexp.MustCompile(`^SUMMARY: UndefinedBehaviorSanitizer: undefined-behavior`),
+		},
+	})
 }

@@ -41,8 +41,12 @@ function(enable_fuzz_testing)
           -D_DISABLE_STRING_ANNOTATION
       )
 
+      # Split the version string by periods into a list
+      string(REPLACE "." ";" version_list ${CMAKE_CXX_COMPILER_VERSION})
+      # Get the first element of the list, which is the major version
+      list(GET version_list 0 CXX_COMPILER_MAJOR_VERSION)
       # Add Visual Studio directory for clang runtime libraries to link directories 
-      link_directories("$ENV{VSINSTALLDIR}\\VC\\Tools\\Llvm\\x64\\lib\\clang\\${CMAKE_CXX_COMPILER_VERSION}\\lib\\windows")
+      link_directories("$ENV{VSINSTALLDIR}\\VC\\Tools\\Llvm\\x64\\lib\\clang\\${CXX_COMPILER_MAJOR_VERSION}\\lib\\windows")
       add_link_options(
           # /INCREMENTAL is enabled by default with RelWithDebInfo, but is unsupported with ASan and potentially impacts
           # performance by padding functions.
@@ -304,8 +308,18 @@ function(add_fuzz_test name)
     target_compile_definitions("${name}" PRIVATE CIFUZZ_GENERATED_CORPUS="${_source_generated_corpus}")
   endif()
 
+  set(_dict_suffix .dict)
+  set(_source_dict "${CMAKE_CURRENT_SOURCE_DIR}/${name}${_dict_suffix}")
+  # Convert path separators to '\' (Windows only) and escape all backslashes for a C string literal.
+  # In the regex strings below, one level of escaping is for the CMake string and another one to get a literal backslash
+  # in a regex.
+  if(WIN32)
+    string(REGEX REPLACE "/" "\\\\" _source_dict "${_source_dict}")
+  endif()
+  string(REGEX REPLACE "\\\\" "\\\\\\\\" _source_dict "${_source_dict}")
+
   # Collect a mapping from CMake target names to information required by cifuzz. Currently, this includes the path of
-  # the fuzz test executable as well as of its seed corpus.
+  # the fuzz test executable as well as of its seed corpus and its default dictionary.
   # We don't use add_custom_command here as we want the mapping to exist already after the configure step, not only
   # after the build step - this way, it is comparatively cheap to update the mapping since the actual build tool doesn't
   # have to run. IDEs may even refresh the metadata automatically for us.
@@ -319,6 +333,10 @@ function(add_fuzz_test name)
   file(GENERATE
        OUTPUT "$<SHELL_PATH:${_seed_corpus_info_file}>"
        CONTENT "${_source_seed_corpus}")
+  set(_dict_info_file "${CMAKE_BINARY_DIR}/$<CONFIG>/.cifuzz/fuzz_tests/${name}/dict")
+  file(GENERATE
+       OUTPUT "$<SHELL_PATH:${_dict_info_file}>"
+       CONTENT "${_source_dict}")
 
   set(_test_name "${name}_regression_test")
   add_test(NAME "${_test_name}" COMMAND "${name}")

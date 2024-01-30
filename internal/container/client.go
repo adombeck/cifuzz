@@ -7,8 +7,8 @@ import (
 
 var dockerClient *client.Client
 
-// getDockerClient returns a docker client and will also handle its closing. It will take configuration options in the future.
-func getDockerClient() (*client.Client, error) {
+// GetDockerClient returns a docker client and will also handle its closing. It will take configuration options in the future.
+func GetDockerClient() (*client.Client, error) {
 	if dockerClient != nil {
 		return dockerClient, nil
 	}

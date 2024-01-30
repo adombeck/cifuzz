@@ -28,7 +28,9 @@ import (
 //     of the wait status is set to SIGPIPE
 func IsTerminatedExitErr(err error) bool {
 	var exitErr *exec.ExitError
-	errors.As(err, &exitErr)
+	if !errors.As(err, &exitErr) {
+		return false
+	}
 	if exitErr.ExitCode() == 143 {
 		return true
 	}

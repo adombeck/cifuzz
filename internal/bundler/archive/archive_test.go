@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/otiai10/copy"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 
 	"code-intelligence.com/cifuzz/internal/testutil"
@@ -78,11 +79,11 @@ func TestWriteArchive(t *testing.T) {
 	// Do not assert group and other permissions which may be affected by masks.
 	err = filepath.WalkDir(out, func(absPath string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		relPath, err := filepath.Rel(out, absPath)
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		for i, expectedEntry := range remainingExpectedEntries {
 			if relPath != expectedEntry.RelPath {

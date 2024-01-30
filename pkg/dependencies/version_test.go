@@ -101,6 +101,16 @@ OpenJDK 64-Bit Server VM (build 18+36-2087, mixed mode, sharing)`,
 		Regex:  nodeRegex,
 		Output: `v16.16.0`,
 	},
+	{
+		Want:   semver.MustParse("0.19.0"),
+		Regex:  jazzerRegex,
+		Output: `.m2/repository/com/code-intelligence/jazzer/0.19.0/jazzer-0.19.0.jar`,
+	},
+	{
+		Want:   semver.MustParse("5.9.2"),
+		Regex:  junitRegex,
+		Output: `.m2/repository/org/junit/jupiter/junit-jupiter-engine/5.9.2/junit-jupiter-engine-5.9.2.jar`,
+	},
 }
 
 func TestVersionParsing(t *testing.T) {

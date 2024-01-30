@@ -466,8 +466,7 @@ func installFishCompletionScript(installDir string) error {
 	completionScript := completionScriptPath(installDir, "fish")
 	symlinkPath := filepath.Join(dir, "cifuzz.fish")
 	log.Printf("Creating symlink %s", symlinkPath)
-	err = fileutil.ForceSymlink(completionScript, symlinkPath)
-	return errors.WithStack(err)
+	return fileutil.ForceSymlink(completionScript, symlinkPath)
 }
 
 func fishSupportsVendorCompletionsDir() bool {

@@ -157,7 +157,7 @@ no-notifications: true
 
 ### server
 
-Set URL of the CI App
+Set URL of CI Sense
 
 #### Example
 
@@ -167,7 +167,7 @@ server: https://app.code-intelligence.com
 
 ### project
 
-Set the project name of the CI App project
+Set the project name of CI Sense project
 
 #### Example
 

@@ -6,6 +6,8 @@ import (
 
 	"github.com/pkg/errors"
 
+	"code-intelligence.com/cifuzz/internal/bundler/archive"
+	"code-intelligence.com/cifuzz/internal/cmdutils"
 	"code-intelligence.com/cifuzz/pkg/log"
 )
 
@@ -40,4 +42,39 @@ func GitIsDirty() bool {
 		log.Debugf("failed to run git status --porcelain: %+v", err)
 	}
 	return len(strings.TrimSpace(string(commit))) != 0
+}
+
+// CodeRevision tries to read the current revision from git. If this is not possible the functions returns
+// nil instead of an error.
+func CodeRevision() *archive.CodeRevision {
+	revision := &archive.CodeRevision{
+		Git: &archive.GitRevision{},
+	}
+
+	commit, err := GitCommit()
+	if err != nil {
+		// if this returns an error (e.g. if users don't have git installed), we
+		// don't want to fail the process (for example bundle creation or finding upload), so we just log that we
+		// couldn't get the git commit and branch and continue without it.
+		log.Debugf("failed to get Git commit. continuing without Git commit and branch. error: %+v",
+			cmdutils.WrapSilentError(err))
+		return nil
+	} else {
+		revision.Git.Commit = commit
+	}
+
+	branch, err := GitBranch()
+	if err != nil {
+		log.Debugf("failed to get Git branch. continuing without Git commit and branch. error: %+v",
+			cmdutils.WrapSilentError(err))
+		return nil
+	} else {
+		revision.Git.Branch = branch
+	}
+
+	if GitIsDirty() {
+		log.Warnf("The Git repository has uncommitted changes. (Archive) Metadata may be inaccurate.")
+	}
+
+	return revision
 }

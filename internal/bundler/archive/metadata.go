@@ -43,12 +43,12 @@ type RunEnvironment struct {
 }
 
 type CodeRevision struct {
-	Git *GitRevision `yaml:"git,omitempty"`
+	Git *GitRevision `yaml:"git,omitempty" json:"git_revision,omitempty"`
 }
 
 type GitRevision struct {
-	Commit string `yaml:"commit,omitempty"`
-	Branch string `yaml:"branch,omitempty"`
+	Commit string `yaml:"commit,omitempty" json:"commit,omitempty"`
+	Branch string `yaml:"branch,omitempty" json:"branch,omitempty"`
 }
 
 type EngineOptions struct {

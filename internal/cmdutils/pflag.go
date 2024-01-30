@@ -21,15 +21,6 @@ var BundleFlags = []string{
 	"timeout",
 }
 
-func MarkFlagsRequired(cmd *cobra.Command, flags ...string) {
-	for _, flag := range flags {
-		err := cmd.MarkFlagRequired(flag)
-		if err != nil {
-			panic(err)
-		}
-	}
-}
-
 func ViperMustBindPFlag(key string, flag *pflag.Flag) {
 	err := viper.BindPFlag(key, flag)
 	if err != nil {
@@ -118,19 +109,34 @@ func AddDictFlag(cmd *cobra.Command) func() {
 	// TODO(afl): Also link to https://github.com/AFLplusplus/AFLplusplus/blob/stable/dictionaries/README.md
 	cmd.Flags().String("dict", "",
 		"A `file` containing input language keywords or other interesting byte sequences.\n"+
+			"This flag is only used if no default dictionary is found for the fuzz test.\n"+
 			"See https://llvm.org/docs/LibFuzzer.html#dictionaries.")
 	return func() {
 		ViperMustBindPFlag("dict", cmd.Flags().Lookup("dict"))
 	}
 }
 
-func AddDockerImageFlag(cmd *cobra.Command) func() {
+func AddDockerImageFlagForContainerCommand(cmd *cobra.Command) func() {
 	// Default was originally set to "ubuntu:rolling", but this is not correct
 	// It will be set by the bundle command depending on the build system, unless user overrides it
 	cmd.Flags().String("docker-image", "",
-		"Docker image to use in the bundle config. This image will be used when\n"+
-			"the bundle is executed on CI Sense.\n"+
-			"By default, the image is chosen automatically based on the build system.")
+		`A Docker image which is used as the base for the container image.
+The image must contain all the dependencies required to run the fuzz test.
+By default, the image is chosen automatically based on the build system
+("eclipse-temurin:20" for Java build systems, "ubuntu:rolling" for others).`)
+	return func() {
+		ViperMustBindPFlag("docker-image", cmd.Flags().Lookup("docker-image"))
+	}
+}
+
+func AddDockerImageFlagForBundleCommand(cmd *cobra.Command) func() {
+	// Default was originally set to "ubuntu:rolling", but this is not correct
+	// It will be set by the bundle command depending on the build system, unless user overrides it
+	cmd.Flags().String("docker-image", "",
+		`Docker image to use in the bundle config. This image will be used when
+the bundle is executed on CI Sense.
+By default, the image is chosen automatically based on the build system
+("eclipse-temurin:20" for Java build systems, "ubuntu:rolling" for others).`)
 	return func() {
 		ViperMustBindPFlag("docker-image", cmd.Flags().Lookup("docker-image"))
 	}
@@ -197,6 +203,14 @@ func AddResolveSourceFileFlag(cmd *cobra.Command) func() {
 			"will be resolved to the identifier of the corresponding fuzz test.")
 	return func() {
 		ViperMustBindPFlag("resolveSourceFilePath", cmd.Flags().Lookup("resolve"))
+	}
+}
+
+func AddRegistryFlag(cmd *cobra.Command) func() {
+	cmd.Flags().String("registry", "", `The container registry to use for the upload of the container image,
+e.g. ghcr.io/my-org/my-project`)
+	return func() {
+		ViperMustBindPFlag("registry", cmd.Flags().Lookup("registry"))
 	}
 }
 

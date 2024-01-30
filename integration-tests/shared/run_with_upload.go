@@ -17,7 +17,7 @@ import (
 	"code-intelligence.com/cifuzz/util/fileutil"
 )
 
-func TestRunWithUpload(t *testing.T, dir string, cifuzz string, args ...string) {
+func TestRunWithUpload(t *testing.T, dir string, cifuzz string, fuzzTestName string, args ...string) {
 	projectName := "my_fuzz_test-bac40407"
 
 	server := mockserver.New(t)
@@ -25,8 +25,30 @@ func TestRunWithUpload(t *testing.T, dir string, cifuzz string, args ...string) 
 	// define handlers
 	server.Handlers["/v1/projects"] = mockserver.ReturnResponse(t, mockserver.ProjectsJSON)
 	server.Handlers["/v2/error-details"] = mockserver.ReturnResponse(t, mockserver.ProjectsJSON)
-	server.Handlers[fmt.Sprintf("/v1/projects/%s/campaign_runs", projectName)] = mockserver.ReturnResponse(t, "{}")
 	server.Handlers[fmt.Sprintf("/v1/projects/%s/findings", projectName)] = mockserver.ReturnResponse(t, "{}")
+
+	// We expect the run command to POST a campaign run with the correct fuzzing
+	// engine depending on the project.
+	switch fuzzTestName {
+	case "crashing_fuzz_test":
+		server.Handlers[fmt.Sprintf("/v1/projects/%s/campaign_runs", projectName)] = mockserver.CheckBodyAndReturnResponse(t,
+			"{}",
+			[]string{"c_api", "LIBFUZZER"}, // expected
+			[]string{"JAVA_LIBFUZZER", "nodejs_api", "java_api", "JAZZER_JS"}, // unexpected
+		)
+	case "com.example.FuzzTestCase::myFuzzTest":
+		server.Handlers[fmt.Sprintf("/v1/projects/%s/campaign_runs", projectName)] = mockserver.CheckBodyAndReturnResponse(t,
+			"{}",
+			[]string{"java_api", "JAVA_LIBFUZZER"}, // expected
+			[]string{"c_api", "nodejs_api", "JAZZER_JS"}, // unexpected
+		)
+	case "FuzzTestCase":
+		server.Handlers[fmt.Sprintf("/v1/projects/%s/campaign_runs", projectName)] = mockserver.CheckBodyAndReturnResponse(t,
+			"{}",
+			[]string{"nodejs_api", "JAZZER_JS"}, // expected
+			[]string{"c_api", "java_api", "LIBFUZZER"}, // unexpected
+		)
+	}
 
 	// start the server
 	server.Start(t)
@@ -48,10 +70,10 @@ func TestRunWithUpload(t *testing.T, dir string, cifuzz string, args ...string) 
 		[]string{
 			"run",
 			"--project", projectName,
-			"--server", server.Address,
+			"--server", server.AddressOnHost(),
 			"--interactive=false",
 			"--no-notifications",
-			"crashing_fuzz_test",
+			fuzzTestName,
 		}, args...)
 
 	cmd := executil.Command(cifuzz, args...)

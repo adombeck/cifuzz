@@ -21,7 +21,7 @@ func defaultFinderMock(t *testing.T, repoRoot string) *mocks.RunfilesFinderMock 
 
 	finderMock := &mocks.RunfilesFinderMock{}
 	finderMock.On("CIFuzzIncludePath").Return(filepath.Join(repoRoot, "include"), nil)
-	finderMock.On("DumperSourcePath").Return(filepath.Join(repoRoot, "tools", "dumper"), nil)
+	finderMock.On("DumperPath").Return(filepath.Join("lib", "dumper.o"), nil)
 	finderMock.On("ClangPath").Return("clang", nil)
 	return finderMock
 }
@@ -83,21 +83,18 @@ func TestEnvsSetInBuild(t *testing.T) {
 func TestNoQuotesOnEnv(t *testing.T) {
 	repoRoot, err := builder.FindProjectDir()
 	require.NoError(t, err)
-	projectDir := filepath.Join(repoRoot, "internal", "build", "other", "testdata")
+	finder := defaultFinderMock(t, repoRoot)
 
-	b, err := NewBuilder(&BuilderOptions{
-		ProjectDir:     projectDir,
-		RunfilesFinder: defaultFinderMock(t, repoRoot),
-	})
 	require.NoError(t, err)
 
-	err = b.setLibFuzzerEnv()
+	var env []string
+	env, err = SetLibFuzzerEnv(env, finder)
 	require.NoError(t, err)
-	assert.NotContains(t, envutil.Getenv(b.env, EnvFuzzTestCFlags), "'")
-	assert.NotContains(t, envutil.Getenv(b.env, EnvFuzzTestCXXFlags), "'")
+	assert.NotContains(t, envutil.Getenv(env, EnvFuzzTestCFlags), "'")
+	assert.NotContains(t, envutil.Getenv(env, EnvFuzzTestCXXFlags), "'")
 
-	err = b.setCoverageEnv()
+	env, err = SetCoverageEnv(env, finder)
 	require.NoError(t, err)
-	assert.NotContains(t, envutil.Getenv(b.env, EnvFuzzTestCFlags), "'")
-	assert.NotContains(t, envutil.Getenv(b.env, EnvFuzzTestCXXFlags), "'")
+	assert.NotContains(t, envutil.Getenv(env, EnvFuzzTestCFlags), "'")
+	assert.NotContains(t, envutil.Getenv(env, EnvFuzzTestCXXFlags), "'")
 }

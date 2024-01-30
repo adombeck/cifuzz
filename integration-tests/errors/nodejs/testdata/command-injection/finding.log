@@ -1,0 +1,7 @@
+==48399== Command Injection in exec(): called with '�jaz_zer'
+    at /tmp/cifuzz-nodejs-testdata-2875010541/command-injection/CommandInjection.fuzz.js:5:17
+MS: 3 ChangeByte-InsertRepeatedBytes-CMP- DE: "jaz_zer"-; base unit: adc83b19e793491b1c6ea0fd8b46cd9f32e592fc
+0xa4,0x6a,0x61,0x7a,0x5f,0x7a,0x65,0x72,
+\244jaz_zer
+artifact_prefix='/tmp/cifuzz-nodejs-testdata-2875010541/command-injection/CommandInjection.fuzz/Test_command_injection/'; Test unit written to /tmp/cifuzz-nodejs-testdata-2875010541/command-injection/CommandInjection.fuzz/Test_command_injection/crash-c556271ba3d5a24b0c707ffc8476a812941513ba
+Base64: pGphel96ZXI=

@@ -22,6 +22,7 @@ type ArchiveWriter interface {
 	WriteHardLink(string, string) error
 	GetSourcePath(string) string
 	HasFileEntry(string) bool
+	Headers() []*tar.Header
 }
 
 type NullArchiveWriter struct{}
@@ -44,11 +45,15 @@ func (w *NullArchiveWriter) GetSourcePath(string) string {
 func (w *NullArchiveWriter) HasFileEntry(string) bool {
 	return true
 }
+func (w *NullArchiveWriter) Headers() []*tar.Header {
+	return []*tar.Header{}
+}
 
 // TarArchiveWriter provides functions to create a gzip-compressed tar archive.
 type TarArchiveWriter struct {
 	*tar.Writer
 	manifest   map[string]string
+	headers    []*tar.Header
 	gzipWriter *gzip.Writer
 }
 
@@ -140,6 +145,7 @@ func (w *TarArchiveWriter) writeFileOrEmptyDir(archivePath string, sourcePath st
 	if err != nil {
 		return errors.WithStack(err)
 	}
+	w.headers = append(w.headers, header)
 
 	if info.IsDir() {
 		return nil
@@ -182,9 +188,9 @@ func (w *TarArchiveWriter) WriteHardLink(target string, linkname string) error {
 // WriteDir traverses sourceDir recursively and writes all regular files
 // and symlinks to the archive.
 func (w *TarArchiveWriter) WriteDir(archiveBasePath string, sourceDir string) error {
-	return filepath.WalkDir(sourceDir, func(path string, d fs.DirEntry, err error) error {
+	err := filepath.WalkDir(sourceDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 
 		relPath, err := filepath.Rel(sourceDir, path)
@@ -201,6 +207,11 @@ func (w *TarArchiveWriter) WriteDir(archiveBasePath string, sourceDir string) er
 		// There is no harm in creating tar entries for empty directories, even though they are not necessary.
 		return w.writeFileOrEmptyDir(archivePath, path)
 	})
+	if err != nil {
+		return errors.WithMessagef(err, "Failed to write files from %s to archive path %s", sourceDir, archiveBasePath)
+	}
+
+	return nil
 }
 
 func (w *TarArchiveWriter) GetSourcePath(archivePath string) string {
@@ -210,6 +221,10 @@ func (w *TarArchiveWriter) GetSourcePath(archivePath string) string {
 func (w *TarArchiveWriter) HasFileEntry(archivePath string) bool {
 	_, exists := w.manifest[archivePath]
 	return exists
+}
+
+func (w *TarArchiveWriter) Headers() []*tar.Header {
+	return w.headers
 }
 
 // Extract extracts the gzip-compressed tar archive bundle into dir.

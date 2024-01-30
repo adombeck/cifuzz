@@ -1,4 +1,4 @@
-code-intelligence.com/cifuzz/integration-tests/java-gradle
-code-intelligence.com/cifuzz/integration-tests/cmake
+code-intelligence.com/cifuzz/integration-tests/gradle/java
+code-intelligence.com/cifuzz/integration-tests/errors/nodejs
+code-intelligence.com/cifuzz/pkg/runner/libfuzzer/integrationtest
 code-intelligence.com/cifuzz/tools/cmake
-code-intelligence.com/cifuzz/tools/replayer

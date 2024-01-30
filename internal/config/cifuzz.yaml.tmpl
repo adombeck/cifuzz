@@ -39,11 +39,14 @@
 ## Set to true to disable desktop notifications.
 #no-notifications: true
 
-## Set URL of the CI App.
+## Set URL of CI Sense.
 {{if .Server}}server: {{.Server}}{{else}}#server: https://app.code-intelligence.com{{end}}
 
-## Set the project name on the CI App.
+## Set the project name on CI Sense.
 {{if .Project}}project: {{.Project}}{{else}}#project: my-project-1a2b3c4d{{end}}
+
+## Set the container registry to upload fuzz containers to.
+# registry: registry.example.org/my-org/my-project
 
 ## Style for CI Fuzz.
 #style: plain

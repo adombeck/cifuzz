@@ -3,11 +3,13 @@ package init
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"testing"
 
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/exp/maps"
 
 	"code-intelligence.com/cifuzz/internal/cmdutils"
 	"code-intelligence.com/cifuzz/internal/config"
@@ -20,8 +22,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestInitCmd(t *testing.T) {
-	testDir, cleanup := testutil.BootstrapExampleProjectForTest("init-cmd-test", config.BuildSystemCMake)
-	defer cleanup()
+	testDir := testutil.BootstrapExampleProjectForTest(t, "init-cmd-test", config.BuildSystemCMake)
 
 	// remove cifuzz.yaml from example project
 	err := os.Remove(filepath.Join(testDir, "cifuzz.yaml"))
@@ -36,33 +37,42 @@ func TestInitCmd(t *testing.T) {
 	assert.ErrorIs(t, err, cmdutils.ErrSilent)
 }
 
-// TestInitCmdForNode tests the init command for Node.js projects (both JavaScript and TypeScript).
-func TestInitCmdForNodeWithLanguageArg(t *testing.T) {
-	if os.Getenv("CIFUZZ_PRERELEASE") == "" {
-		t.Skip("skipping test for non-prerelease")
-	}
-	testDir, cleanup := testutil.BootstrapExampleProjectForTest("init-cmd-test", config.BuildSystemNodeJS)
-	defer cleanup()
+// TestInitCmdForNodeWithJSLanguageArg tests the init command for Node.js projects (JS).
+func TestInitCmdForNodeWithJSLanguageArg(t *testing.T) {
+	testDir := testutil.BootstrapExampleProjectForTest(t, "init-cmd-test", config.BuildSystemNodeJS)
 
 	// remove cifuzz.yaml from example project
 	err := os.Remove(filepath.Join(testDir, "cifuzz.yaml"))
 	require.NoError(t, err)
 
-	// test for JavaScript
 	_, stdErr, err := cmdutils.ExecuteCommand(t, New(), os.Stdin, "js")
 	assert.NoError(t, err)
 	assert.Contains(t, stdErr, "jest.config.js")
 	assert.FileExists(t, filepath.Join(testDir, "cifuzz.yaml"))
+}
 
-	// remove cifuzz.yaml again
-	err = os.Remove(filepath.Join(testDir, "cifuzz.yaml"))
+// TestInitCmdForNodeWithTSLanguageArg tests the init command for Node.js projects (TS).
+func TestInitCmdForNodeWithTSLanguageArg(t *testing.T) {
+	testDir := testutil.BootstrapExampleProjectForTest(t, "init-cmd-test", config.BuildSystemNodeJS)
+
+	// remove cifuzz.yaml from example project
+	err := os.Remove(filepath.Join(testDir, "cifuzz.yaml"))
 	require.NoError(t, err)
-	assert.NoFileExists(t, filepath.Join(testDir, "cifuzz.yaml"))
 
-	// test for TypeScript
-	_, stdErr, err = cmdutils.ExecuteCommand(t, New(), os.Stdin, "ts")
+	_, stdErr, err := cmdutils.ExecuteCommand(t, New(), os.Stdin, "ts")
 	assert.NoError(t, err)
 	assert.Contains(t, stdErr, "jest.config.ts")
 	assert.Contains(t, stdErr, "To introduce the fuzz function types globally, add the following import to globals.d.ts:")
 	assert.FileExists(t, filepath.Join(testDir, "cifuzz.yaml"))
+}
+
+func TestSupportedInitTestTypes(t *testing.T) {
+	// Test that the supportedInitTestTypesMap and supportedInitTestTypes are in sync.
+	initTestTypes := supportedInitTestTypes
+	sort.Strings(initTestTypes)
+
+	initTestTypesKeys := maps.Keys(supportedInitTestTypesMap)
+	sort.Strings(initTestTypesKeys)
+
+	assert.Equal(t, initTestTypesKeys, initTestTypes)
 }

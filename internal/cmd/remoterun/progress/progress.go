@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/mitchellh/ioprogress"
+	"github.com/pkg/errors"
 )
 
 func NewReader(reader io.Reader, size int64, successMessage string) *ioprogress.Reader {
@@ -26,7 +27,7 @@ func DrawProgressBar(w io.Writer, drawFormatBar ioprogress.DrawTextFormatFunc, s
 		if progress == -1 && total == -1 {
 			// Progress completed, so we clear the utils.progress bar and print the success message
 			_, err := fmt.Fprintln(w, strings.Repeat(" ", maxLength)+"\r"+successMessage)
-			return err
+			return errors.WithStack(err)
 		}
 
 		line := drawFormatBar(progress, total)
@@ -39,6 +40,6 @@ func DrawProgressBar(w io.Writer, drawFormatBar ioprogress.DrawTextFormatFunc, s
 
 		maxLength = len(line)
 		_, err := fmt.Fprint(w, line+"\r")
-		return err
+		return errors.WithStack(err)
 	}
 }

@@ -19,7 +19,9 @@ import (
 
 	builderPkg "code-intelligence.com/cifuzz/internal/builder"
 	"code-intelligence.com/cifuzz/internal/testutil"
+	"code-intelligence.com/cifuzz/pkg/cicheck"
 	"code-intelligence.com/cifuzz/pkg/finding"
+	"code-intelligence.com/cifuzz/pkg/log"
 	"code-intelligence.com/cifuzz/util/executil"
 	"code-intelligence.com/cifuzz/util/fileutil"
 )
@@ -77,6 +79,49 @@ func AppendLines(t *testing.T, filePath string, linesToAdd []string) {
 	require.NoError(t, err)
 }
 
+func ReplaceStringInFile(t *testing.T, filePath string, old, new string) {
+	f, err := os.OpenFile(filePath, os.O_RDWR, 0700)
+	require.NoError(t, err)
+	defer f.Close()
+
+	// Replace string in file
+	replaced := false
+	scanner := bufio.NewScanner(f)
+	var lines []string
+	for scanner.Scan() {
+		if strings.Contains(scanner.Text(), old) {
+			log.Printf("Replacing %s with %s in %s", old, new, filePath)
+			lines = append(lines, strings.ReplaceAll(scanner.Text(), old, new))
+			replaced = true
+		} else {
+			lines = append(lines, scanner.Text())
+		}
+	}
+	require.True(t, replaced, fmt.Sprintf("couldn't find %s in %s", old, filePath))
+
+	// Write the new content of pom.xml back to filePath.
+	err = f.Truncate(0)
+	require.NoError(t, err)
+	_, err = f.Seek(0, io.SeekStart)
+	require.NoError(t, err)
+	_, err = f.WriteString(strings.Join(lines, "\n") + "\n")
+	require.NoError(t, err)
+}
+
+func CopyTestDockerDirForE2E(t *testing.T, dockerfile string) string {
+	t.Helper()
+	fileutil.ForceLongPathTempDir()
+
+	dir, err := os.MkdirTemp("", fmt.Sprintf("cifuzz-%s-testdata-", "docker"))
+	require.NoError(t, err)
+
+	// write dockerfile to a file
+	err = os.WriteFile(filepath.Join(dir, "Dockerfile"), []byte(dockerfile), 0777)
+	require.NoError(t, err)
+
+	return dir
+}
+
 // Used for e2e tests
 // CopyTestdataDirForE2E copies a named folder from the samples directory
 // to a temporary directory called "cifuzz-<name>-testdata" and returns the path.
@@ -87,10 +132,14 @@ func CopyTestdataDirForE2E(t *testing.T, name string) string {
 	cwd, err := os.Getwd()
 	require.NoError(t, err)
 
-	dir := testutil.MkdirTemp(t, "", fmt.Sprintf("cifuzz-%s-testdata-", name))
+	dir := testutil.MkdirTemp(t, "", fmt.Sprintf("cifuzz-%s-testdata-", strings.ReplaceAll(name, "/", "-")))
 
 	// Get the path to the testdata dir
 	testDataDir := filepath.Join(cwd, "..", "samples", name)
+	// if string starts with examples, use the project examples folder
+	if strings.HasPrefix(name, "examples/") {
+		testDataDir = filepath.Join(cwd, "..", "..", name)
+	}
 
 	// Copy the testdata dir to the temporary directory
 	err = copy.Copy(testDataDir, dir)
@@ -183,7 +232,15 @@ func InstallCIFuzzInTemp(t *testing.T) string {
 		require.NoError(t, err)
 
 		// Build cifuzz in the install directory
-		opts := builderPkg.Options{Version: "dev", TargetDir: installDir, Coverage: true}
+		var opts builderPkg.Options
+		// If we are not in a CI environment, we need to set GOOS and GOARCH,
+		// otherwise we will build for the current OS.
+		if !cicheck.IsCIEnvironment() {
+			opts = builderPkg.Options{Version: "dev", TargetDir: installDir, Coverage: true, GOOS: "linux", GOARCH: "amd64"}
+		} else {
+			opts = builderPkg.Options{Version: "dev", TargetDir: installDir, Coverage: true}
+		}
+
 		builder, err := builderPkg.NewCIFuzzBuilder(opts)
 		require.NoError(t, err)
 		err = builder.BuildCIFuzzAndDeps()
@@ -230,7 +287,7 @@ func TerminateOnSignal(t *testing.T, cmd *executil.Cmd) {
 	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
 	go func() {
 		s := <-sigs
-		t.Logf("Received %s", s.String())
+		log.Printf("Received %s", s.String())
 
 		// Re-raise the signal for other handlers
 		signal.Stop(sigs)

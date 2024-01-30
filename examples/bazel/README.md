@@ -27,8 +27,7 @@ Note that this requires these lines in your `.bazelrc`:
 
 ```bash
 # Replay cifuzz findings (C/C++ only)
-build:cifuzz-replay --@rules_fuzzing//fuzzing:cc_engine_sanitizer=asan
-build:cifuzz-replay --@rules_fuzzing//fuzzing:cc_engine_sanitizer=ubsan
+build:cifuzz-replay --@rules_fuzzing//fuzzing:cc_engine_sanitizer=asan-ubsan
 build:cifuzz-replay --compilation_mode=opt
 build:cifuzz-replay --copt=-g
 build:cifuzz-replay --copt=-U_FORTIFY_SOURCE

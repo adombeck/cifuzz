@@ -1,7 +1,6 @@
 package api
 
 import (
-	"bytes"
 	"encoding/json"
 	"io"
 	"net/url"
@@ -20,21 +19,21 @@ type Project struct {
 }
 
 type ProjectResponse struct {
-	Name     string   `json:"name"`
-	Done     bool     `json:"done"`
-	Response Response `json:"response"`
+	Name     string    `json:"name"`
+	Done     bool      `json:"done"`
+	Response *Response `json:"response"`
 }
 
 type Response struct {
-	Type          string   `json:"@type"`
-	Name          string   `json:"name"`
-	DisplayName   string   `json:"display_name"`
-	Location      Location `json:"location"`
-	OwnerUsername string   `json:"owner_username"`
+	Type          string    `json:"@type"`
+	Name          string    `json:"name"`
+	DisplayName   string    `json:"display_name"`
+	Location      *Location `json:"location"`
+	OwnerUsername string    `json:"owner_username"`
 }
 
 type Location struct {
-	GitPath GitPath `json:"git_path"`
+	GitPath *GitPath `json:"git_path"`
 }
 
 type GitPath struct{}
@@ -42,7 +41,7 @@ type GitPath struct{}
 func (client *APIClient) ListProjects(token string) ([]*Project, error) {
 	url, err := url.JoinPath("/v1", "projects")
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	resp, err := client.sendRequest("GET", url, nil, token)
 	if err != nil {
@@ -81,6 +80,11 @@ func (client *APIClient) ListProjects(token string) ([]*Project, error) {
 		if p.OwnerOrganizationName == FeaturedProjectsOrganization {
 			continue
 		}
+
+		p.Name, err = ConvertProjectNameFromAPI(p.Name)
+		if err != nil {
+			return nil, err
+		}
 		filteredProjects = append(filteredProjects, p)
 	}
 
@@ -94,16 +98,16 @@ func (client *APIClient) CreateProject(name string, token string) (*Project, err
 		},
 	}
 
-	body, err := json.Marshal(projectBody)
+	body, err := json.MarshalIndent(projectBody, "", "  ")
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 
 	url, err := url.JoinPath("/v1", "projects")
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
-	resp, err := client.sendRequest("POST", url, bytes.NewReader(body), token)
+	resp, err := client.sendRequest("POST", url, body, token)
 	if err != nil {
 		return nil, err
 	}

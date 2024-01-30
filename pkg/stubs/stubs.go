@@ -51,7 +51,7 @@ func Create(path string, testType config.FuzzTestType) error {
 			}
 			fileNameExtension, found := config.TestTypeFileNameExtension(testType)
 			if !found {
-				return errors.WithStack(err)
+				panic(fmt.Sprintf("no file name extension found for test type %s", testType))
 			}
 
 			baseName := strings.TrimSuffix(filepath.Base(path), fileNameExtension)

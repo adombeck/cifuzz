@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<project
+	xmlns="http://maven.apache.org/POM/4.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"
+>
+	<modelVersion>4.0.0</modelVersion>
+
+	<groupId>com.code_intelligence.cifuzz</groupId>
+	<artifactId>list-fuzz-tests</artifactId>
+	<version>1.0</version>
+
+	<properties>
+		<maven.compiler.source>8</maven.compiler.source>
+		<maven.compiler.target>8</maven.compiler.target>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+	</properties>
+	<dependencies>
+		<!--
+		Runtime dependencies provided by the user for jazzer-junit, keep these in sync with the latest
+		version of Jazzer.
+		-->
+		<dependency>
+			<groupId>org.junit.platform</groupId>
+			<artifactId>junit-platform-commons</artifactId>
+			<version>1.8.2</version>
+		</dependency>
+		<dependency>
+			<groupId>org.junit.platform</groupId>
+			<artifactId>junit-platform-launcher</artifactId>
+			<version>1.8.2</version>
+		</dependency>
+
+		<!-- Runtime dependencies provided by us and shaded, keep these up-to-date. -->
+		<dependency>
+			<groupId>io.github.classgraph</groupId>
+			<artifactId>classgraph</artifactId>
+			<version>4.8.161</version>
+		</dependency>
+
+		<!--
+		Test dependencies that depend on runtime dependencies.
+		Keep jazzer-junit up-to-date and update the junit-jupiter-* deps only as high as the runtime
+		dependencies on junit-platform-* allow.
+		 -->
+		<dependency>
+			<groupId>com.code-intelligence</groupId>
+			<artifactId>jazzer-junit</artifactId>
+			<version>0.21.1</version>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.junit.jupiter</groupId>
+			<artifactId>junit-jupiter</artifactId>
+			<version>5.8.2</version>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.junit.jupiter</groupId>
+			<artifactId>junit-jupiter-api</artifactId>
+			<version>5.8.2</version>
+			<scope>test</scope>
+		</dependency>
+
+		<!-- Test dependencies that do not depend on runtime dependencies, keep these up-to-date. -->
+		<dependency>
+			<groupId>com.google.truth</groupId>
+			<artifactId>truth</artifactId>
+			<version>1.1.3</version>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>com.google.truth.extensions</groupId>
+			<artifactId>truth-java8-extension</artifactId>
+			<version>1.1.3</version>
+			<scope>test</scope>
+		</dependency>
+	</dependencies>
+
+	<build>
+		<finalName>list-fuzz-tests</finalName>
+
+		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<version>3.1.2</version>
+				<configuration>
+					<!-- Only include the tests that aren't just test data for the tool. -->
+					<includes>
+						<include>com/code_intelligence/cifuzz/helper/*.java</include>
+					</includes>
+				</configuration>
+				<dependencies />
+			</plugin>
+
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-jar-plugin</artifactId>
+				<version>3.3.0</version>
+				<configuration>
+					<archive>
+						<manifestEntries>
+							<Built-By>Code Intelligence GmbH</Built-By>
+						</manifestEntries>
+					</archive>
+				</configuration>
+			</plugin>
+
+			<!--
+			Since we inject this tool into an arbitrary classpath, we have to ensure that all our classes
+			and classpath resources live under a package unique to cifuzz (com.code_intelligence.cifuzz).
+			We shade every other class into com.code_intelligence.cifuzz.third_party and delete all
+			resources.
+			-->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-shade-plugin</artifactId>
+				<version>3.5.0</version>
+				<executions>
+					<execution>
+						<phase>package</phase>
+						<goals>
+							<goal>shade</goal>
+						</goals>
+						<configuration>
+							<createDependencyReducedPom>false</createDependencyReducedPom>
+							<artifactSet>
+								<includes>
+									<include>com.code_intelligence.cifuzz</include>
+									<include>io.github.classgraph</include>
+								</includes>
+							</artifactSet>
+							<relocations>
+								<relocation>
+									<pattern>io.github.classgraph</pattern>
+									<shadedPattern>com.code_intelligence.cifuzz.third_party.io.github.classgraph
+									</shadedPattern>
+								</relocation>
+								<relocation>
+									<pattern>nonapi.io.github.classgraph</pattern>
+									<shadedPattern>
+										com.code_intelligence.cifuzz.third_party.nonapi.io.github.classgraph
+									</shadedPattern>
+								</relocation>
+							</relocations>
+							<filters>
+								<filter>
+									<artifact>io.github.classgraph</artifact>
+									<excludes>
+										<exclude>META-INF/MANIFEST.MF</exclude>
+									</excludes>
+								</filter>
+								<filter>
+									<artifact>*:*</artifact>
+									<includes>
+										<!-- Filters are applied before relocation. -->
+										<include>io/github/classgraph/**</include>
+										<include>nonapi/io/github/classgraph/**</include>
+										<include>com/code_intelligence/cifuzz/**</include>
+										<include>META-INF/MANIFEST.MF</include>
+									</includes>
+								</filter>
+							</filters>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+		</plugins>
+	</build>
+</project>

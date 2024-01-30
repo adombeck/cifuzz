@@ -27,8 +27,8 @@ ENV CXX=/usr/lib/llvm-12/bin/clang++
 # (which should only be necessary when we use new Go features).
 RUN --mount=type=cache,target=/var/cache/go-src \
     SHA256=$(sha256sum /var/cache/go-src/go.tar.gz | cut -d ' ' -f 1); \
-    if [ "${SHA256:-}" != "b945ae2bb5db01a0fb4786afde64e6fbab50b67f6fa0eb6cfa4924f16a7ff1eb" ]; then \
-      curl --fail --silent --show-error --location -o /var/cache/go-src/go.tar.gz https://go.dev/dl/go1.20.6.linux-amd64.tar.gz; \
+    if [ "${SHA256:-}" != "b3075ae1ce5dab85f89bc7905d1632de23ca196bd8336afd93fa97434cfa55ae" ]; then \
+      curl --fail --silent --show-error --location -o /var/cache/go-src/go.tar.gz https://go.dev/dl/go1.21.1.linux-amd64.tar.gz; \
     fi && \
     tar -C /usr/local -xzf /var/cache/go-src/go.tar.gz
 

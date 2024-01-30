@@ -8,14 +8,22 @@ on:
 jobs:
   container_image:
     name: Build and push container image
-    runs-on: ubuntu-22.04
     permissions:
       contents: read
       packages: write
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-22.04]
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
+
+      - name: Setup VM for cifuzz
+        uses: ./.github/actions/vm_setup
+        with:
+          os: ${{ matrix.os }}
 
       - name: Build and push
         env:

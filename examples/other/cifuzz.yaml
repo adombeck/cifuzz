@@ -38,8 +38,8 @@ build-command: make clean && make $FUZZ_TEST
 ## Set to true to disable desktop notifications
 #no-notifications: true
 
-## Set URL of the CI App
+## Set URL of CI Sense
 #server: https://app.code-intelligence.com
 
-## Set the project name on the CI App
+## Set the project name on CI Sense
 #project: my-project-1a2b3c4d

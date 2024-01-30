@@ -8,7 +8,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"golang.org/x/exp/maps"
 	"golang.org/x/term"
 
 	"code-intelligence.com/cifuzz/internal/api"
@@ -31,14 +30,14 @@ type options struct {
 	Interactive bool   `mapstructure:"interactive"`
 	Server      string `mapstructure:"server"`
 	Project     string `mapstructure:"project"`
-	testLang    config.FuzzTestType
+	testLang    string
 }
 
 func New() *cobra.Command {
 	var bindFlags func()
 	opts := &options{}
 	cmd := &cobra.Command{
-		Use:   fmt.Sprintf("init [%s]", strings.Join(maps.Values(config.SupportedTestTypes()), "|")),
+		Use:   fmt.Sprintf("init [%s]", strings.Join(supportedInitTestTypes, "|")),
 		Short: "Set up a project for use with cifuzz",
 		Long: `This command sets up a project for use with cifuzz, creating a
 'cifuzz.yaml' config file.`,
@@ -57,25 +56,32 @@ func New() *cobra.Command {
 				}
 			}
 
-			opts.BuildSystem, err = config.DetermineBuildSystem(opts.Dir)
-			if err != nil {
-				log.Error(err)
-				return cmdutils.WrapSilentError(err)
+			if len(args) == 1 {
+				opts.testLang = args[0]
 			}
 
-			err = config.ValidateBuildSystem(opts.BuildSystem)
-			if err != nil {
-				log.Error(err)
-				return cmdutils.WrapSilentError(err)
+			// Override detected build system if test language is specified.
+			if opts.testLang != "" {
+				// cobra checks for us that opts.testLang is in supportedInitTestTypes
+				// because we set ValidArgs below.
+				opts.BuildSystem = supportedInitTestTypesMap[opts.testLang]
+			} else {
+				// Detect and validate buildSystem only when testLang is not specified by the user.
+				opts.BuildSystem, err = config.DetermineBuildSystem(opts.Dir)
+				if err != nil {
+					return err
+				}
+
+				err = config.ValidateBuildSystem(opts.BuildSystem)
+				if err != nil {
+					return err
+				}
 			}
 
 			if opts.Interactive {
 				opts.Interactive = term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))
 			}
 
-			if len(args) == 1 {
-				opts.testLang = config.FuzzTestType(args[0])
-			}
 			if !opts.Interactive && opts.BuildSystem == config.BuildSystemNodeJS && opts.testLang == "" {
 				err := errors.New("cifuzz init requires a test language for Node.js projects [js|ts]")
 				return cmdutils.WrapIncorrectUsageError(err)
@@ -94,7 +100,7 @@ func New() *cobra.Command {
 			return run(opts)
 		},
 		Args:      cobra.MatchAll(cobra.MaximumNArgs(1), cobra.OnlyValidArgs),
-		ValidArgs: maps.Values(config.SupportedTestTypes()),
+		ValidArgs: supportedInitTestTypes,
 	}
 
 	cmdutils.DisableConfigCheck(cmd)
@@ -122,7 +128,7 @@ func run(opts *options) error {
 			log.Warnf("Config already exists in %s", configpath)
 			err = cmdutils.ErrSilent
 		}
-		log.Error(err, "Failed to create config")
+		log.Error(err, "Failed to create config: %v", err)
 		return err
 	}
 
@@ -133,10 +139,10 @@ Use 'cifuzz create' to create your first fuzz test.`)
 	return nil
 }
 
-func setUpAndMentionBuildSystemIntegrations(dir string, buildSystem string, testLang config.FuzzTestType) {
+func setUpAndMentionBuildSystemIntegrations(dir string, buildSystem string, testLang string) {
 	switch buildSystem {
 	case config.BuildSystemBazel:
-		log.Print(fmt.Sprintf(messaging.Instructions(buildSystem), dependencies.RulesFuzzingHTTPArchiveRule, dependencies.CIFuzzBazelCommit))
+		log.Print(fmt.Sprintf(messaging.Instructions(buildSystem), dependencies.RulesFuzzingWORKSPACEContent, dependencies.CIFuzzBazelCommit))
 	case config.BuildSystemCMake:
 		// Note: We set NO_SYSTEM_ENVIRONMENT_PATH to avoid that the
 		// system-wide cmake package takes precedence over a package
@@ -160,23 +166,18 @@ func setUpAndMentionBuildSystemIntegrations(dir string, buildSystem string, test
 		// directory is only searched in step 7.
 		log.Print(messaging.Instructions(buildSystem))
 	case config.BuildSystemNodeJS:
-		if os.Getenv("CIFUZZ_PRERELEASE") != "" {
-			if testLang == "" {
-				lang, err := getNodeProjectLang()
-				if err != nil {
-					log.Error(err)
-					return
-				}
-				testLang = lang
+		if testLang == "" {
+			lang, err := getNodeProjectLang()
+			if err != nil {
+				log.Error(err)
+				return
 			}
-			if testLang == "ts" {
-				log.Print(messaging.Instructions("nodets"))
-			} else {
-				log.Print(messaging.Instructions(buildSystem))
-			}
+			testLang = lang
+		}
+		if testLang == "ts" {
+			log.Print(messaging.Instructions("nodets"))
 		} else {
-			log.Print("cifuzz does not support Node.js projects yet.")
-			os.Exit(1)
+			log.Print(messaging.Instructions(buildSystem))
 		}
 	case config.BuildSystemMaven:
 		log.Print(messaging.Instructions(buildSystem))
@@ -200,7 +201,7 @@ func setUpAndMentionBuildSystemIntegrations(dir string, buildSystem string, test
 	}
 }
 
-func getNodeProjectLang() (config.FuzzTestType, error) {
+func getNodeProjectLang() (string, error) {
 	langOptions := map[string]string{
 		"JavaScript": string(config.JavaScript),
 		"TypeScript": string(config.TypeScript),
@@ -210,5 +211,22 @@ func getNodeProjectLang() (config.FuzzTestType, error) {
 	if err != nil {
 		return "", errors.WithStack(err)
 	}
-	return config.FuzzTestType(userSelectedLang), nil
+	return userSelectedLang, nil
+}
+
+// map of supported test types/build systems for init command. Used to validate input and show args in --help
+var supportedInitTestTypesMap = map[string]string{
+	"cmake":  config.BuildSystemCMake,
+	"maven":  config.BuildSystemMaven,
+	"gradle": config.BuildSystemGradle,
+	"js":     config.BuildSystemNodeJS,
+	"ts":     config.BuildSystemNodeJS,
+}
+
+var supportedInitTestTypes = []string{
+	"cmake",
+	"maven",
+	"gradle",
+	"js",
+	"ts",
 }

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"io"
 	"regexp"
+
+	"github.com/pkg/errors"
 )
 
 var ignoredPattern = regexp.MustCompile(`^libminijail\[\d+]: child process \d+ exited with status \d+`)
@@ -41,7 +43,7 @@ func (w *OutputFilter) Write(p []byte) (int, error) {
 
 	written, err := w.nextWriter.Write(toPrint)
 	numBytesNotWritten := len(toPrint) - written
-	return len(p) - numBytesNotWritten, err
+	return len(p) - numBytesNotWritten, errors.WithStack(err)
 }
 
 func IsIgnoredLine(line string) bool {

@@ -1,6 +1,8 @@
 package cmdutils
 
 import (
+	"strings"
+
 	"github.com/spf13/cobra"
 )
 
@@ -25,6 +27,10 @@ func NeedsConfig(cmd *cobra.Command) bool {
 		if c.Annotations != nil && c.Annotations["skipConfigCheck"] == "true" {
 			return false
 		}
+	}
+
+	if strings.HasPrefix(cmd.Name(), "print-") {
+		return false
 	}
 
 	return true

@@ -11,11 +11,11 @@ import (
 
 	"github.com/pkg/errors"
 
-	"code-intelligence.com/cifuzz/internal/build/maven"
-	"code-intelligence.com/cifuzz/internal/cmd/coverage/summary"
+	"code-intelligence.com/cifuzz/internal/build/java/maven"
 	"code-intelligence.com/cifuzz/internal/cmdutils"
 	"code-intelligence.com/cifuzz/internal/coverage"
 	"code-intelligence.com/cifuzz/pkg/log"
+	parser "code-intelligence.com/cifuzz/pkg/parser/coverage"
 	"code-intelligence.com/cifuzz/pkg/runfiles"
 	"code-intelligence.com/cifuzz/util/executil"
 	"code-intelligence.com/cifuzz/util/stringutil"
@@ -102,10 +102,23 @@ func (cov *CoverageGenerator) GenerateCoverageReport() (string, error) {
 	reportPath := filepath.Join(cov.OutputPath, "jacoco.xml")
 	reportFile, err := os.Open(reportPath)
 	if err != nil {
+		if os.IsNotExist(err) {
+			// Catch case where no jacoco.xml was produced, most likely caused by a faulty jacoco configuration
+			notExistErr := fmt.Errorf(`JaCoCo did not create a coverage report (jacoco.xml).
+Please check if you configured JaCoCo correctly in your project.
+
+If you use the maven-surefire-plugin: 
+Be aware that adding additional arguments in the plugin configuration in your 
+pom.xml can disrupt the JaCoCo execution and have to be prefixed with '@{argline}'.
+
+<argLine>@{argLine} -your -extra -arguments</argLine>
+`)
+			return "", notExistErr
+		}
 		return "", errors.WithStack(err)
 	}
 	defer reportFile.Close()
-	summary.ParseJacocoXML(reportFile).PrintTable(cov.Stderr)
+	parser.ParseJacocoXMLIntoSummary(reportFile).PrintTable(cov.Stderr)
 
 	if cov.OutputFormat == coverage.FormatJacocoXML {
 		return filepath.Join(cov.OutputPath, "jacoco.xml"), nil
@@ -136,6 +149,7 @@ func (runner *MavenRunnerImpl) RunCommand(args []string) error {
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
+	defer signal.Stop(sigs)
 	go func() {
 		<-sigs
 		err = cmd.TerminateProcessGroup()

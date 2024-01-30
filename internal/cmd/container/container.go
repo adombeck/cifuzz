@@ -14,8 +14,8 @@ func New() *cobra.Command {
 func newWithOptions() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "container",
-		Short: "Preview: better living through chemistry",
-		Long:  `Preview of new cifuzz container capabilities. Aim is to improve local and remote Fuzz Test runs. Available only with CIFUZZ_PRERELEASE flag.`,
+		Short: "Container related commands. (experimental)",
+		Long:  `Preview of new cifuzz container capabilities. Aim is to improve local and remote fuzz test runs. (experimental)`,
 		RunE: func(c *cobra.Command, args []string) error {
 			_ = c.Help()
 			return nil

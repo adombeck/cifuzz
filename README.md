@@ -49,6 +49,8 @@ based tests into your project.
 - Easily set up, create and run fuzz tests
 - Generate coverage reports that [can be integrated in your
   IDE](docs/Coverage-ide-integrations.md)
+- (Experimental) support for portable [fuzz
+  containers](docs/Fuzz-Containers.md)
 - Supports multiple programming languages and build systems
 
 ![CLion](/docs/assets/tools/clion.png)
@@ -61,6 +63,9 @@ based tests into your project.
 ![gradle](/docs/assets/tools/gradle.png)
 ![Maven](/docs/assets/tools/maven.png)
 ![Bazel](/docs/assets/tools/bazel.png)
+![JavaScript](/docs/assets/tools/javascript.png)
+![TypeScript](/docs/assets/tools/typescript.png)
+![Node.js](/docs/assets/tools/nodejs.png)
 
 ## Getting started
 
@@ -107,7 +112,7 @@ different prerequisites:
  <summary>C/C++ with CMake</summary>
 
 - [CMake >= 3.16](https://cmake.org/)
-- [LLVM >= 11](https://clang.llvm.org/get_started.html)
+- [LLVM >= 12](https://clang.llvm.org/get_started.html)
 
 **Ubuntu / Debian**
 
@@ -161,7 +166,7 @@ You may have to add %ChocolateyInstall%\lib\lcov\tools\bin to your PATH variable
 - Java JDK >= 8 (1.8) (e.g. [OpenJDK](https://openjdk.java.net/install/) or
   [Zulu](https://www.azul.com/downloads/zulu-community/))
   is needed for Bazel's coverage feature.
-- [LLVM >= 11](https://clang.llvm.org/get_started.html)
+- [LLVM >= 12](https://clang.llvm.org/get_started.html)
 - [lcov](https://github.com/linux-test-project/lcov)
 
 **Ubuntu / Debian**
@@ -294,13 +299,6 @@ repository.
 
 <details>
  <summary>Node.js</summary>
-
-**Info:** Support for Node.js projects is still experimental and
-hidden behind a feature flag. You can try it out by running:
-
-```bash
-export CIFUZZ_PRERELEASE=1
-```
 
 - [Node.js](https://nodejs.org) >= 16.0
 

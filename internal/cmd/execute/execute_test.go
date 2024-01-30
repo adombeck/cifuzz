@@ -1,14 +1,20 @@
+//go:build !windows
+
 package execute
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"code-intelligence.com/cifuzz/internal/bundler/archive"
-	"code-intelligence.com/cifuzz/pkg/runner/jazzer"
-	"code-intelligence.com/cifuzz/pkg/runner/libfuzzer"
+	"code-intelligence.com/cifuzz/internal/cmdutils"
+	"code-intelligence.com/cifuzz/internal/config"
+	"code-intelligence.com/cifuzz/internal/testutil"
 )
 
 func Test_getFuzzer(t *testing.T) {
@@ -127,6 +133,39 @@ func Test_findFuzzer(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "return single fuzzer if name is empty",
+			args: args{
+				nameToFind: "",
+				bundleMetadata: &archive.Metadata{
+					Fuzzers: []*archive.Fuzzer{
+						{
+							Name: "0-fuzzer",
+						},
+					},
+				},
+			},
+			want: &archive.Fuzzer{
+				Name: "0-fuzzer",
+			},
+		},
+		{
+			name: "error if name is empty and there are multiple fuzzers",
+			args: args{
+				nameToFind: "",
+				bundleMetadata: &archive.Metadata{
+					Fuzzers: []*archive.Fuzzer{
+						{
+							Name: "0-fuzzer",
+						},
+						{
+							Name: "1-fuzzer",
+						},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
 			name: "error out if fuzzer not found",
 			args: args{
 				nameToFind: "a-fuzzer",
@@ -156,25 +195,11 @@ func Test_findFuzzer(t *testing.T) {
 	}
 }
 
-func Test_buildRunnerJazzerRunner(t *testing.T) {
-	runner, err := buildRunner(&archive.Fuzzer{
-		Name:   "a-fuzzer",
-		Engine: "JAVA_LIBFUZZER",
-	})
-	require.NoError(t, err)
-	v, ok := runner.(*jazzer.Runner)
-	require.Equal(t, true, ok)
-	require.Equal(t, "a-fuzzer", v.RunnerOptions.TargetClass)
-}
+func TestStopSignalFile(t *testing.T) {
+	dir := testutil.BootstrapExampleProjectForTest(t, "execute-stop-signal-test", config.BuildSystemCMake)
 
-func Test_buildRunnerLibfuzzerRunner(t *testing.T) {
-	runner, err := buildRunner(&archive.Fuzzer{
-		Target: "b-fuzzer",
-		Path:   "fuzzTarget",
-		Engine: "LIBFUZZER",
-	})
-	require.NoError(t, err)
-	v, ok := runner.(*libfuzzer.Runner)
-	require.Equal(t, true, ok)
-	require.Equal(t, "fuzzTarget", v.RunnerOptions.FuzzTarget)
+	// We don't care if this command fails, it should create the file in any case
+	// nolint
+	cmdutils.ExecuteCommand(t, New(), os.Stdin, "my_fuzz_test", "--stop-signal-file=test")
+	assert.FileExists(t, filepath.Join(dir, "test"), "--stop-signal-file flag did not create the file 'cifuzz-execution-finished'on exit")
 }

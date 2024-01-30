@@ -11,6 +11,7 @@ import (
 )
 
 type Printer interface {
+	Start()
 	PrintMetrics(metrics *report.FuzzingMetric)
 }
 

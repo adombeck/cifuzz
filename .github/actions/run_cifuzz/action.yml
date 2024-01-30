@@ -16,8 +16,19 @@ runs:
         cat fuzzing.log | grep -E "Findings:\s+2"
       shell: bash
 
+    - name: Run CMake Example in Container
+      if: contains(inputs.os, 'ubuntu')
+      run: |
+        make build-container-image
+        cd examples/cmake
+        DOCKER_BUILDKIT=1 docker build -t cmake-runner .
+        cifuzz container run -v --docker-image cmake-runner my_fuzz_test 2>&1 | tee fuzzing.log
+        cat fuzzing.log | grep "heap buffer overflow"
+        cat fuzzing.log | grep "undefined behavior"
+      shell: bash
+
     - name: Run Other Build System Example
-      if: contains(inputs.os, 'macos') || contains(inputs.os, 'ubuntu') || contains(inputs.os, 'arch')
+      if: contains(inputs.os, 'macos') || contains(inputs.os, 'ubuntu')
       run: |
         cd examples/other
         cifuzz run my_fuzz_test 2>&1 | tee fuzzing.log
@@ -27,7 +38,7 @@ runs:
       shell: bash
 
     - name: Run Bazel Example
-      if: contains(inputs.os, 'ubuntu') || contains(inputs.os, 'arch')
+      if: contains(inputs.os, 'ubuntu')
       run: |
         cd examples/bazel
         cifuzz run -v src:explore_me_fuzz_test 2>&1 | tee fuzzing.log

@@ -3,3 +3,7 @@ third-party/
 package-lock.json
 **/.cifuzz-*/
 coverage/
+examples/bazel/bazel-*/
+examples/**/build
+**/cifuzz.yaml
+go.mod

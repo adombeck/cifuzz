@@ -46,6 +46,11 @@ func TestMain(m *testing.M) {
 		builder.Cleanup()
 		log.Fatalf("Failed to install CMake integration: %+v", err)
 	}
+	err = builder.BuildDumper()
+	if err != nil {
+		builder.Cleanup()
+		log.Fatalf("Failed to install CMake integration: %+v", err)
+	}
 	err = builder.CopyFiles()
 	if err != nil {
 		builder.Cleanup()
@@ -117,6 +122,7 @@ func TestIntegration_Ctest_WithUndefinedBehaviorSanitizer(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
+
 	t.Parallel()
 	testutil.RegisterTestDeps("testdata", "modules")
 

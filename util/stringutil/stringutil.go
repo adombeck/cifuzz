@@ -73,6 +73,15 @@ func Contains(slice []string, element string) bool {
 	return false
 }
 
+func Index(slice []string, element string) int {
+	for i, e := range slice {
+		if e == element {
+			return i
+		}
+	}
+	return -1
+}
+
 func ContainsStringWithPrefix(slice []string, prefix string) bool {
 	for _, e := range slice {
 		if strings.HasPrefix(e, prefix) {
