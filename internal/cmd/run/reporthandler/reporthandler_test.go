@@ -20,7 +20,6 @@ import (
 
 var (
 	logOutput io.ReadWriter
-	testDir   string
 )
 
 func TestMain(m *testing.M) {
@@ -31,14 +30,11 @@ func TestMain(m *testing.M) {
 	logOutput = bytes.NewBuffer([]byte{})
 	log.Output = logOutput
 
-	var cleanup func()
-	testDir, cleanup = testutil.ChdirToTempDir("report-handler-test-")
-	defer cleanup()
-
 	m.Run()
 }
 
 func TestReportHandler_EmptyCorpus(t *testing.T) {
+	testDir := testutil.ChdirToTempDir(t, "report-handler-test-")
 	h, err := NewReportHandler("", &ReportHandlerOptions{ProjectDir: testDir})
 	require.NoError(t, err)
 
@@ -53,6 +49,7 @@ func TestReportHandler_EmptyCorpus(t *testing.T) {
 }
 
 func TestReportHandler_NonEmptyCorpus(t *testing.T) {
+	testDir := testutil.ChdirToTempDir(t, "report-handler-test-")
 	h, err := NewReportHandler("", &ReportHandlerOptions{ProjectDir: testDir})
 	require.NoError(t, err)
 
@@ -71,6 +68,7 @@ func TestReportHandler_NonEmptyCorpus(t *testing.T) {
 }
 
 func TestReportHandler_Metrics(t *testing.T) {
+	testDir := testutil.ChdirToTempDir(t, "report-handler-test-")
 	h, err := NewReportHandler("", &ReportHandlerOptions{ProjectDir: testDir})
 	require.NoError(t, err)
 
@@ -91,6 +89,7 @@ func TestReportHandler_Metrics(t *testing.T) {
 }
 
 func TestReportHandler_Finding(t *testing.T) {
+	testDir := testutil.ChdirToTempDir(t, "report-handler-test-")
 	h, err := NewReportHandler("", &ReportHandlerOptions{ProjectDir: testDir, ManagedSeedCorpusDir: "seed_corpus"})
 	require.NoError(t, err)
 
@@ -135,11 +134,13 @@ func TestReportHandler_CorpusDirs(t *testing.T) {
 }
 
 func TestReportHandler_PrintJSON(t *testing.T) {
-	h, err := NewReportHandler("", &ReportHandlerOptions{ProjectDir: testDir, PrintJSON: true})
-	require.NoError(t, err)
-
+	testDir := testutil.ChdirToTempDir(t, "report-handler-test-")
 	jsonOut := bytes.NewBuffer([]byte{})
-	h.jsonOutput = jsonOut
+	h, err := NewReportHandler("", &ReportHandlerOptions{
+		ProjectDir: testDir,
+		JSONOutput: jsonOut,
+	})
+	require.NoError(t, err)
 
 	findingLogs := []string{"Oops", "The program crashed"}
 	findingReport := &report.Report{
@@ -154,7 +155,8 @@ func TestReportHandler_PrintJSON(t *testing.T) {
 }
 
 func TestReportHandler_GenerateName(t *testing.T) {
-	h, err := NewReportHandler("", &ReportHandlerOptions{ProjectDir: testDir, PrintJSON: true})
+	testDir := testutil.ChdirToTempDir(t, "report-handler-test-")
+	h, err := NewReportHandler("", &ReportHandlerOptions{ProjectDir: testDir})
 	require.NoError(t, err)
 
 	findingLogs := []string{"Oops", "The program crashed"}
@@ -167,7 +169,7 @@ func TestReportHandler_GenerateName(t *testing.T) {
 	}
 	err = h.Handle(findingReport)
 	require.NoError(t, err)
-	assert.Equal(t, "adoring_orangutan", findingReport.Finding.Name)
+	assert.Equal(t, "adventurous_pangolin", findingReport.Finding.Name)
 }
 
 func checkOutput(t *testing.T, r io.Reader, s ...string) {

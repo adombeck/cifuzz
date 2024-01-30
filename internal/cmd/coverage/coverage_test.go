@@ -35,8 +35,7 @@ func TestClangMissing(t *testing.T) {
 
 	// clone the example project because this command needs to parse an actual
 	// project config... if there is none it will fail before the dependency check
-	_, cleanup := testutil.BootstrapExampleProjectForTest("coverage-cmd-test", config.BuildSystemCMake)
-	defer cleanup()
+	testutil.BootstrapExampleProjectForTest(t, "coverage-cmd-test", config.BuildSystemCMake)
 
 	_, stdErr, err := cmdutils.ExecuteCommand(t, New(), os.Stdin, "my_fuzz_test")
 	require.Error(t, err)
@@ -53,8 +52,7 @@ func TestVisualStudioMissing(t *testing.T) {
 
 	// clone the example project because this command needs to parse an actual
 	// project config... if there is none it will fail before the dependency check
-	_, cleanup := testutil.BootstrapExampleProjectForTest("coverage-cmd-test", config.BuildSystemCMake)
-	defer cleanup()
+	testutil.BootstrapExampleProjectForTest(t, "coverage-cmd-test", config.BuildSystemCMake)
 
 	_, stdErr, err := cmdutils.ExecuteCommand(t, New(), os.Stdin, "my_fuzz_test")
 	require.Error(t, err)
@@ -68,8 +66,7 @@ func TestCMakeMissing(t *testing.T) {
 
 	// clone the example project because this command needs to parse an actual
 	// project config... if there is none it will fail before the dependency check
-	_, cleanup := testutil.BootstrapExampleProjectForTest("coverage-cmd-test", config.BuildSystemCMake)
-	defer cleanup()
+	testutil.BootstrapExampleProjectForTest(t, "coverage-cmd-test", config.BuildSystemCMake)
 
 	_, stdErr, err := cmdutils.ExecuteCommand(t, New(), os.Stdin, "my_fuzz_test")
 	require.Error(t, err)
@@ -85,8 +82,7 @@ func TestLlvmCovVersion(t *testing.T) {
 
 	// clone the example project because this command needs to parse an actual
 	// project config... if there is none it will fail before the dependency check
-	_, cleanup := testutil.BootstrapExampleProjectForTest("coverage-cmd-test", config.BuildSystemCMake)
-	defer cleanup()
+	testutil.BootstrapExampleProjectForTest(t, "coverage-cmd-test", config.BuildSystemCMake)
 
 	_, stdErr, err := cmdutils.ExecuteCommand(t, New(), os.Stdin, "my_fuzz_test")
 	require.Error(t, err)
@@ -96,17 +92,12 @@ func TestLlvmCovVersion(t *testing.T) {
 }
 
 func TestNodeMissing(t *testing.T) {
-	if os.Getenv("CIFUZZ_PRERELEASE") == "" {
-		t.Skip()
-	}
-
 	dependencies.TestMockAllDeps(t)
 	dependencies.OverwriteUninstalled(dependencies.GetDep(dependencies.Node))
 
 	// clone the example project because this command needs to parse an actual
 	// project config... if there is none it will fail before the dependency check
-	_, cleanup := testutil.BootstrapExampleProjectForTest("coverage-cmd-test", config.BuildSystemNodeJS)
-	defer cleanup()
+	testutil.BootstrapExampleProjectForTest(t, "coverage-cmd-test", config.BuildSystemNodeJS)
 
 	_, stdErr, err := cmdutils.ExecuteCommand(t, New(), os.Stdin, "FuzzTestCase")
 	require.Error(t, err)

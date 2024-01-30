@@ -63,8 +63,7 @@ to be added to the `.bazelrc` file in the project workspace.
 # Replay cifuzz findings (C/C++ only)
 build:cifuzz-replay --@rules_fuzzing//fuzzing:cc_engine=@rules_fuzzing//fuzzing/engines:replay
 build:cifuzz-replay --@rules_fuzzing//fuzzing:cc_engine_instrumentation=none
-build:cifuzz-replay --@rules_fuzzing//fuzzing:cc_engine_sanitizer=asan
-build:cifuzz-replay --@rules_fuzzing//fuzzing:cc_engine_sanitizer=ubsan
+build:cifuzz-replay --@rules_fuzzing//fuzzing:cc_engine_sanitizer=asan-ubsan
 build:cifuzz-replay --compilation_mode=opt
 build:cifuzz-replay --copt=-g
 build:cifuzz-replay --copt=-U_FORTIFY_SOURCE

@@ -13,14 +13,8 @@ import (
 	"code-intelligence.com/cifuzz/util/fileutil"
 )
 
-func TestMain(m *testing.M) {
-	_, cleanup := testutil.ChdirToTempDir("init-cmd-test-")
-	defer cleanup()
-
-	m.Run()
-}
-
 func TestRootCmd(t *testing.T) {
+	testutil.ChdirToTempDir(t, "root-cmd-test-")
 	cmd, err := New()
 	require.NoError(t, err)
 	_, _, err = cmdutils.ExecuteCommand(t, cmd, os.Stdin)
@@ -28,6 +22,7 @@ func TestRootCmd(t *testing.T) {
 }
 
 func TestChangingToNonExistingDirectory(t *testing.T) {
+	testutil.ChdirToTempDir(t, "root-cmd-test-")
 	origWorkDir, err := os.Getwd()
 	require.NoError(t, err)
 
@@ -51,6 +46,7 @@ func TestChangingToNonExistingDirectory(t *testing.T) {
 }
 
 func TestChangingToExistingDirectory(t *testing.T) {
+	testutil.ChdirToTempDir(t, "root-cmd-test-")
 	origWorkDir, err := os.Getwd()
 	require.NoError(t, err)
 

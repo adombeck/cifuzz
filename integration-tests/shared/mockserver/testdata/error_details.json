@@ -17,6 +17,30 @@
 				}
 			],
 			"language": 1
+		},
+		{
+			"id": "heap_buffer_overflow",
+			"name": "Heap Buffer Overflow",
+			"description": "A heap buffer overflow is a type of a memory corruption vulnerability that is widely used for different types of attacks. A successful heap buffer overflow attack can be used to read sensitive data in memory, or write and execute code in it.",
+			"severity": {
+				"description": "Critical",
+				"score": 9
+			},
+			"mitigation": "A programmer can follow the following guidelines to help avoid buffer overflows: When using functions which copy a given size from memory, ensure that the target buffer has a size large enough for the amount of data to be copied. Always make sure to access the buffer within its defined boundaries, checking on each access.",
+			"links": [
+				{
+					"description": "ASan Example",
+					"url": "https://github.com/google/sanitizers/wiki/AddressSanitizerExampleHeapOutOfBounds"
+				},
+				{
+					"description": "CWE: Overflow writes",
+					"url": "https://cwe.mitre.org/data/definitions/787.html"
+				},
+				{
+					"description": "CWE: Overflow reads",
+					"url": "https://cwe.mitre.org/data/definitions/125.html"
+				}
+			]
 		}
 	]
 }

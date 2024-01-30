@@ -2,7 +2,6 @@ package runfiles
 
 import (
 	"bytes"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -65,7 +64,7 @@ func (f RunfilesFinderImpl) GenHTMLPath() (string, error) {
 			path := filepath.Join(dir, "genhtml")
 			exists, err := fileutil.Exists(path)
 			if err != nil {
-				return "", errors.WithStack(err)
+				return "", err
 			}
 			if exists {
 				return path, nil
@@ -85,9 +84,16 @@ func (f RunfilesFinderImpl) PerlPath() (string, error) {
 }
 
 func (f RunfilesFinderImpl) JavaPath() (string, error) {
-	os.LookupEnv("JAVA_HOME")
-	path, err := exec.LookPath("java")
-	return path, errors.WithStack(err)
+	javaHome, err := f.JavaHomePath()
+	if err != nil {
+		return "", err
+	}
+	javaBin := filepath.Join(javaHome, "bin", "java")
+	if runtime.GOOS == "windows" {
+		javaBin = filepath.Join(javaHome, "bin", "java.exe")
+	}
+
+	return javaBin, nil
 }
 
 func (f RunfilesFinderImpl) MavenPath() (string, error) {
@@ -113,12 +119,16 @@ func (f RunfilesFinderImpl) ProcessWrapperPath() (string, error) {
 	return f.findFollowSymlinks("lib/process_wrapper")
 }
 
+func (f RunfilesFinderImpl) DumperPath() (string, error) {
+	return f.findFollowSymlinks("lib/dumper.o")
+}
+
 func (f RunfilesFinderImpl) ReplayerSourcePath() (string, error) {
 	return f.findFollowSymlinks("src/replayer.c")
 }
 
-func (f RunfilesFinderImpl) DumperSourcePath() (string, error) {
-	return f.findFollowSymlinks("src/dumper.c")
+func (f RunfilesFinderImpl) ListFuzzTestsJarPath() (string, error) {
+	return f.findFollowSymlinks("share/java/list-fuzz-tests.jar")
 }
 
 func (f RunfilesFinderImpl) VisualStudioPath() (string, error) {
@@ -126,7 +136,7 @@ func (f RunfilesFinderImpl) VisualStudioPath() (string, error) {
 	if !found {
 		log.Warn(`Please make sure that you run this command from a Developer Command Prompt for VS 2022.
 Otherwise Visual Studio will not be found.`)
-		return "", errors.New("Visual Studio not found.")
+		return "", errors.New("Visual Studio not found")
 	}
 	return path, nil
 }
@@ -197,7 +207,7 @@ func (f RunfilesFinderImpl) llvmToolPath(name string) (string, error) {
 	if runtime.GOOS == "windows" {
 		visualStudioPath, err := f.VisualStudioPath()
 		if err != nil {
-			return "", errors.New("Visual Studio not found.")
+			return "", err
 		}
 
 		path := os.Getenv("PATH")
@@ -210,14 +220,14 @@ func (f RunfilesFinderImpl) llvmToolPath(name string) (string, error) {
 			path = filepath.Join(dir, name+".exe")
 			exists, err := fileutil.Exists(path)
 			if err != nil {
-				return "", errors.WithStack(err)
+				return "", err
 			}
 			if exists {
 				return path, nil
 			}
 		}
 
-		return "", errors.New(fmt.Sprintf("%s not found in %%PATH%%", name))
+		return "", errors.Errorf("%s not found in %%PATH%%", name)
 	}
 
 	var err error

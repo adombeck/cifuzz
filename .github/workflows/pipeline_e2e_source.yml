@@ -1,12 +1,22 @@
 # This Pipeline executes some kind of e2e test by running instructions from the docs
-# To not unnecessarily lengthen the running time of the PR pipelines we just run these
-# tests after pushing into main.
+# To not unnecessarily lengthen the runtime of the PR pipelines we just run these
+# tests after pushing to main.
+#
+# To test changes to this pipeline on a branch that's not main, trigger
+# the workflow manually by selecting the workflow in the left sidebar
+# in the "Actions" tab and clicking "Run workflow" on the right, then
+# select the branch you want to test.
+
 name: E2E Source Installation/Example Test
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   # we are running the linux part in container as it is a more realistic starting
@@ -19,28 +29,24 @@ jobs:
       options: --privileged
     strategy:
       matrix:
-        container: ["ubuntu:22.04", "archlinux:latest"]
+        container: ["ubuntu:22.04"]
     steps:
-      - name: Install dependencies with pacman
-        if: contains(matrix.container, 'archlinux')
-        # please make sure this is in sync with the README.md / installation docs
-        # glibc was added as it is required by nodejs which is used to run
-        # the github action "action/checkout"
-        run: pacman -Sy --noconfirm git make cmake clang llvm lcov jdk17-openjdk maven gradle python
-
-      - name: Build libcap statically
-        if: contains(matrix.container, 'archlinux')
+      - name: Set up Docker's Apt repository
+        if: contains(matrix.container, 'ubuntu')
+        # https://docs.docker.com/engine/install/ubuntu/
         run: |
-          pacman -Syu --noconfirm glibc pam linux-api-headers make diffutils
-          mkdir /libcap
-          cd /libcap
-          curl --output libcap.tar.gz --fail --location https://git.kernel.org/pub/scm/libs/libcap/libcap.git/snapshot/libcap-2.65.tar.gz
-          echo "b0c770a99f978ca32ce58fb72b23d2a883b160aa30ee909fb83ba4003efc771c  libcap.tar.gz" > libcap.sha
-          sha256sum -c libcap.sha
-          tar -zxvf libcap.tar.gz
-          cd libcap-2.65
-          make
-          make install
+          apt update
+          apt --yes install ca-certificates curl gnupg
+          install -m 0755 -d /etc/apt/keyrings
+          curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+          chmod a+r /etc/apt/keyrings/docker.gpg
+
+          # Add the repository to Apt sources:
+          echo \
+            "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+            "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | \
+            tee /etc/apt/sources.list.d/docker.list > /dev/null
+          apt update
 
       - name: Install dependencies with apt
         if: contains(matrix.container, 'ubuntu')
@@ -48,11 +54,12 @@ jobs:
         run: |
           apt update
           apt --yes install git make cmake clang llvm lcov libcap-dev default-jdk maven curl unzip
+          apt --yes install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
       - name: Setup Go environment
         uses: actions/setup-go@v3
         with:
-          go-version: "1.20"
+          go-version: "1.21"
 
       - name: Install gradle
         if: contains(matrix.container, 'ubuntu')

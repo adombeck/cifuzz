@@ -27,7 +27,7 @@ func TestIntegration_MavenSpring(t *testing.T) {
 	cifuzzRunner := shared.CIFuzzRunner{
 		CIFuzzPath:      cifuzz,
 		DefaultWorkDir:  projectDir,
-		DefaultFuzzTest: "com.example.GreeterApplicationTests",
+		DefaultFuzzTest: "com.example.GreeterApplicationTests::fuzzTestGreet",
 	}
 
 	// Run the fuzz test

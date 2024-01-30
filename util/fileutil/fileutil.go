@@ -140,7 +140,7 @@ func ForceLongPathTempDir() {
 	}
 	tempDirLongPath, err := filepath.EvalSymlinks(os.TempDir())
 	if err != nil {
-		log.Error(err, "failed to get long path for temp dir")
+		log.Error(err, "Failed to get long path for temp dir: %v", err)
 		return
 	}
 	// os.TempDir() calls GetTempPath on Windows, which first inspects
@@ -148,7 +148,7 @@ func ForceLongPathTempDir() {
 	// https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-gettemppatha
 	err = os.Setenv("TMP", tempDirLongPath)
 	if err != nil {
-		log.Error(err, "failed to set TMP to long path for temp dir")
+		log.Error(err, "Failed to set TMP to long path for temp dir: %v", err)
 	}
 }
 
@@ -164,7 +164,7 @@ func SearchFileBackwards(start, filename string) (string, error) {
 		filePath := filepath.Join(currentDir, filename)
 		exists, err := Exists(filePath)
 		if err != nil {
-			return "", errors.WithStack(err)
+			return "", err
 		}
 		if exists {
 			return filePath, nil
@@ -210,7 +210,7 @@ func IsSystemLibrary(library string) bool {
 	for _, systemLibraryPath := range systemLibraryPaths[runtime.GOOS] {
 		isBelowLibPath, err := IsBelow(library, systemLibraryPath)
 		if err != nil {
-			log.Errorf(err, "error while checking system library: %s", library)
+			log.Errorf(err, "error while checking system library %s: %v", library, err)
 			return false
 		}
 		if isBelowLibPath {

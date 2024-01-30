@@ -2,7 +2,6 @@ package remoterun
 
 import (
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -44,14 +43,11 @@ type remoteRunOpts struct {
 func (opts *remoteRunOpts) Validate() error {
 	err := config.ValidateBuildSystem(opts.BuildSystem)
 	if err != nil {
-		log.Error(err)
-		return cmdutils.WrapSilentError(err)
+		return err
 	}
 
 	if opts.BuildSystem == config.BuildSystemNodeJS && !config.AllowUnsupportedPlatforms() {
-		err = errors.Errorf(config.NotSupportedErrorMessage("remote run", opts.BuildSystem))
-		log.Error(err)
-		return cmdutils.WrapSilentError(err)
+		return errors.Errorf(config.NotSupportedErrorMessage("remote run", opts.BuildSystem))
 	}
 
 	if opts.BundlePath == "" {
@@ -92,10 +88,14 @@ bundle and uploads it to CI Sense to start a remote
 fuzzing run.
 
 The inputs found in the inputs directory of the fuzz test are also added
-to the bundle in addition to optional input directories specified with
+to the bundle in addition to optional input directories specified by using
 the seed-corpus flag.
-More details about the build system specific inputs directory location
-can be found in the help message of the run command.
+
+The default dictionary of the fuzz test is added to the bundle
+if no other dictionary is specified by using the --dict flag.
+
+More details about the build system specific inputs directory and default
+dictionary locations can be found in the help message of the run command.
 
 If the --bundle flag is used, building and bundling is skipped and the
 specified bundle is uploaded to start a remote fuzzing run instead.
@@ -112,10 +112,9 @@ variable or by running 'cifuzz login' first.
 			// were bound to the flags of other commands before.
 			bindFlags()
 
-			err := bundle.SetUpBundleLogging(cmd, &opts.Opts)
+			err := bundle.SetUpBundleLogging(cmd.OutOrStdout(), cmd.ErrOrStderr(), &opts.Opts)
 			if err != nil {
-				log.Errorf(err, "Failed to setup logging: %v", err.Error())
-				return cmdutils.WrapSilentError(err)
+				return errors.WithMessage(err, "Failed to setup logging")
 			}
 
 			var argsToPass []string
@@ -127,19 +126,20 @@ variable or by running 'cifuzz login' first.
 			cmdutils.ViperMustBindPFlag("bundle", cmd.Flags().Lookup("bundle"))
 			err = config.FindAndParseProjectConfig(opts)
 			if err != nil {
-				log.Errorf(err, "Failed to parse cifuzz.yaml: %v", err.Error())
-				return cmdutils.WrapSilentError(err)
+				return err
 			}
 
 			// Fail early if the platform is not supported
 			isOSIndependent := opts.BuildSystem == config.BuildSystemMaven || opts.BuildSystem == config.BuildSystemGradle
 			if runtime.GOOS != "linux" && !isOSIndependent && !config.AllowUnsupportedPlatforms() {
-				err = errors.Errorf(config.NotSupportedErrorMessage("remote run", runtime.GOOS))
-				log.Error(err)
-				return cmdutils.WrapSilentError(err)
+				return errors.Errorf(config.NotSupportedErrorMessage("remote run", runtime.GOOS))
 			}
 
-			fuzzTests, err := resolve.FuzzTestArguments(opts.ResolveSourceFilePath, args, opts.BuildSystem, opts.ProjectDir)
+			var fuzzTests []string
+			fuzzTests, err = resolve.FuzzTestArguments(opts.ResolveSourceFilePath, args, opts.BuildSystem, opts.ProjectDir)
+			if err != nil {
+				return err
+			}
 			opts.FuzzTests = fuzzTests
 			opts.BuildSystemArgs = argsToPass
 
@@ -157,7 +157,7 @@ variable or by running 'cifuzz login' first.
 
 			opts.Server, err = api.ValidateAndNormalizeServerURL(opts.Server)
 			if err != nil {
-				return cmdutils.WrapSilentError(err)
+				return err
 			}
 
 			// Print warning that flags which only effect the build of
@@ -174,7 +174,7 @@ variable or by running 'cifuzz login' first.
 		},
 		RunE: func(c *cobra.Command, args []string) error {
 			cmd := runRemoteCmd{Command: c, opts: opts}
-			cmd.apiClient = api.NewClient(opts.Server, cmd.Command.Root().Version)
+			cmd.apiClient = api.NewClient(opts.Server)
 			return cmd.run()
 		},
 	}
@@ -186,7 +186,7 @@ variable or by running 'cifuzz login' first.
 		cmdutils.AddBuildJobsFlag,
 		cmdutils.AddCommitFlag,
 		cmdutils.AddDictFlag,
-		cmdutils.AddDockerImageFlag,
+		cmdutils.AddDockerImageFlagForContainerCommand,
 		cmdutils.AddEngineArgFlag,
 		cmdutils.AddEnvFlag,
 		cmdutils.AddInteractiveFlag,
@@ -204,34 +204,9 @@ variable or by running 'cifuzz login' first.
 }
 
 func (c *runRemoteCmd) run() error {
-	var err error
-
-	token := auth.GetToken(c.opts.Server)
-	if token == "" {
-		log.Print("You need to authenticate to CI Sense to use this command.")
-
-		if !c.opts.Interactive {
-			log.Print("Please set CIFUZZ_API_TOKEN or run 'cifuzz login'.")
-			return cmdutils.ErrSilent
-		}
-
-		yes, err := dialog.Confirm("Log in now?", true)
-		if err != nil {
-			return err
-		}
-		if !yes {
-			log.Print("Please set CIFUZZ_API_TOKEN or run 'cifuzz login'.")
-			return cmdutils.ErrSilent
-		}
-		token, err = auth.ReadCheckAndStoreTokenInteractively(c.apiClient, nil)
-		if err != nil {
-			return err
-		}
-	} else {
-		err = auth.EnsureValidToken(*c.apiClient, token)
-		if err != nil {
-			return err
-		}
+	token, err := auth.EnsureValidToken(c.opts.Server)
+	if err != nil {
+		return err
 	}
 
 	if c.opts.ProjectName == "" {
@@ -243,7 +218,7 @@ func (c *runRemoteCmd) run() error {
 		}
 
 		if c.opts.Interactive {
-			c.opts.ProjectName, err = c.selectProject(projects)
+			c.opts.ProjectName, err = dialog.ProjectPickerWithOptionNew(projects, "Select the project you want to start a fuzzing run for:", c.apiClient, token)
 			if err != nil {
 				return err
 			}
@@ -257,13 +232,13 @@ func (c *runRemoteCmd) run() error {
 			// project choice
 			err = dialog.AskToPersistProjectChoice(c.opts.ProjectName)
 			if err != nil {
-				return cmdutils.WrapSilentError(err)
+				return err
 			}
 
 		} else {
 			var projectNames []string
 			for _, p := range projects {
-				projectNames = append(projectNames, strings.TrimPrefix(p.Name, "projects/"))
+				projectNames = append(projectNames, p.Name)
 			}
 			if len(projectNames) == 0 {
 				log.Warnf("No projects found. Please create a project first at %s.", c.opts.Server)
@@ -285,37 +260,24 @@ func (c *runRemoteCmd) run() error {
 		c.opts.BundlePath = bundlePath
 		c.opts.OutputPath = bundlePath
 
-		logging.StartBuildProgressSpinner(log.BundleInProgressMsg)
+		buildPrinterOutput := os.Stdout
+		if c.opts.PrintJSON {
+			buildPrinterOutput = os.Stderr
+		}
+		buildPrinter := logging.NewBuildPrinter(buildPrinterOutput, log.BundleInProgressMsg)
 
 		b := bundler.New(&c.opts.Opts)
 		_, err = b.Bundle()
 		if err != nil {
-			logging.StopBuildProgressSpinnerOnError(log.BundleInProgressErrorMsg)
-			var execErr *cmdutils.ExecError
-			if errors.As(err, &execErr) {
-				// It is expected that some commands might fail due to user
-				// configuration so we print the error without the stack trace
-				// (in non-verbose mode) and silence it
-				log.Error(err)
-				return cmdutils.ErrSilent
-			}
-
+			buildPrinter.StopOnError(log.BundleInProgressErrorMsg)
 			return err
 		}
 
-		logging.StopBuildProgressSpinnerOnSuccess(log.BundleInProgressSuccessMsg, true)
+		buildPrinter.StopOnSuccess(log.BundleInProgressSuccessMsg, true)
 	}
 
 	artifact, err := c.apiClient.UploadBundle(c.opts.BundlePath, c.opts.ProjectName, token)
 	if err != nil {
-		var apiErr *api.APIError
-		if !errors.As(err, &apiErr) {
-			// API calls might fail due to network issues, invalid server
-			// responses or similar. We don't want to print a stack trace
-			// in those cases.
-			log.Error(err)
-			return cmdutils.WrapSilentError(err)
-		}
 		return err
 	}
 
@@ -340,61 +302,15 @@ func (c *runRemoteCmd) run() error {
 		//       shows details about the run, but currently details are only
 		//       shown on the "<fuzz target>/edit" page, which lists all runs
 		//       of the fuzz target.
-		path, err := url.JoinPath(c.opts.Server, "dashboard", campaignRunName, "overview")
+		addr, err := cmdutils.BuildURLFromParts(c.opts.Server, "dashboard", campaignRunName, "overview")
 		if err != nil {
 			return err
 		}
-
-		values := url.Values{}
-		values.Add("origin", "cli")
-
-		url, err := url.Parse(path)
-		if err != nil {
-			return err
-		}
-		url.RawQuery = values.Encode()
 
 		log.Successf(`Successfully started fuzzing run. To view findings and coverage, open:
     %s
-`, url.String())
+`, addr)
 	}
 
 	return nil
-}
-
-// selectProject lets the user select a project from a list of projects.
-func (c *runRemoteCmd) selectProject(projects []*api.Project) (string, error) {
-	// Let the user select a project
-	var displayNames []string
-	var names []string
-	for _, p := range projects {
-		displayNames = append(displayNames, p.DisplayName)
-		names = append(names, p.Name)
-	}
-	maxLen := stringutil.MaxLen(displayNames)
-	items := map[string]string{}
-	for i := range displayNames {
-		key := fmt.Sprintf("%-*s [%s]", maxLen, displayNames[i], strings.TrimPrefix(names[i], "projects/"))
-		items[key] = names[i]
-	}
-
-	// add an option to cancel the command
-	items["<Cancel>"] = "<<cancel>>"
-
-	if len(items) == 1 {
-		err := errors.Errorf("No projects found. Please create a project first at %s.", c.opts.Server)
-		log.Error(err)
-		return "", cmdutils.WrapSilentError(err)
-	}
-
-	projectName, err := dialog.Select("Select the project you want to start a fuzzing run for", items, true)
-	if err != nil {
-		return "", errors.WithStack(err)
-	}
-
-	if projectName == "<<cancel>>" {
-		return "<<cancel>>", nil
-	}
-
-	return projectName, nil
 }

@@ -16,6 +16,7 @@ import (
 	"github.com/pterm/pterm"
 
 	"code-intelligence.com/cifuzz/pkg/finding"
+	"code-intelligence.com/cifuzz/pkg/java/sourcemap"
 	"code-intelligence.com/cifuzz/pkg/minijail"
 	"code-intelligence.com/cifuzz/pkg/parser/errorid"
 	"code-intelligence.com/cifuzz/pkg/parser/libfuzzer/stacktrace"
@@ -46,10 +47,21 @@ var (
 		`== Java Assertion Error`)
 	jazzerInputPathPatter = regexp.MustCompile(`INFO: using inputs from: (?P<input_path>.*)$`)
 
-	jestFindingBeginningPattern = regexp.MustCompile(
-		`^\s*●`)
-	jestFindingSourceCodePattern = regexp.MustCompile(
-		`^\s*\>?\s\d*\s+\|`)
+	jazzerJSExceptionErrorPattern = regexp.MustCompile(
+		`==\d+== Uncaught Exception: (?P<message>.+)`,
+	)
+	jazzerJSCommandInjectionPattern = regexp.MustCompile(
+		`==\d+== Command Injection`,
+	)
+	jazzerJSPathTraveralPattern = regexp.MustCompile(
+		`==\d+== Path Traversal`,
+	)
+	jazzerJSPrototypePollutionPattern = regexp.MustCompile(
+		`==\d+== Prototype Pollution`,
+	)
+	beginningOfJestReportPattern = regexp.MustCompile(
+		`FAIL Jazzer\.js`,
+	)
 
 	// Examples for matching strings:
 	// #2	INITED cov: 10 ft: 11 corp: 1/1b exec/s: 0 rss: 30Mb
@@ -85,8 +97,7 @@ type parser struct {
 	pendingFinding                       *finding.Finding
 	numMetricsLinesSinceFindingIsPending int
 
-	foundJestFinding      bool
-	foundJestErrorDetails bool
+	foundBeginningOfJestReport bool
 
 	lastNewFeatureTime time.Time // Timestamp representing the point when the last new feature was reported
 	lastFeatures       int       // Last features reported by Libfuzzer
@@ -103,6 +114,7 @@ type Options struct {
 	StartupOutputWriter io.Writer
 	// The directory to which paths in the stack trace are made relative to
 	ProjectDir string
+	SourceMap  *sourcemap.SourceMap
 }
 
 func NewLibfuzzerOutputParser(options *Options) *parser {
@@ -261,16 +273,9 @@ func (p *parser) parseLine(ctx context.Context, line string) error {
 	}
 
 	if p.pendingFinding != nil {
-		if p.SupportJazzerJS && !p.foundJestErrorDetails {
-			_, found := regexutil.FindNamedGroupsMatch(jestFindingSourceCodePattern, line)
-			if found {
-				p.pendingFinding.Details = strings.TrimSpace(strings.Join(p.pendingFinding.Logs[1:], "\n"))
-				p.foundJestErrorDetails = true
-			}
-		}
 		// The line is not a metrics line and doesn't mark a new finding,
 		// so we append it to the pending finding (unless it's filtered)
-		if !minijail.IsIgnoredLine(line) {
+		if !minijail.IsIgnoredLine(line) && !p.foundBeginningOfJestReport {
 			p.pendingFinding.Logs = append(p.pendingFinding.Logs, line)
 		}
 	}
@@ -305,8 +310,8 @@ func (p *parser) parseAsNewFinding(line string) *finding.Finding {
 		}
 	}
 
-	if p.SupportJazzerJS && !p.foundJestFinding {
-		finding := p.parseAsJestFinding(line)
+	if p.SupportJazzerJS {
+		finding := p.parseAsJazzerJSFinding(line)
 		if finding != nil {
 			return finding
 		}
@@ -318,9 +323,12 @@ func (p *parser) parseAsNewFinding(line string) *finding.Finding {
 	}
 
 	finding = p.parseAsLibfuzzerFinding(line)
-	// If JazzerJS is supported, the libfuzzer finding is part of a
-	// JazzerJS finding and should not be treated as a new finding
-	if finding != nil && !p.SupportJazzerJS {
+	if finding != nil {
+		// If JazzerJS is supported, the libfuzzer finding is part of a
+		// JazzerJS finding and should not be treated as a new finding
+		if p.SupportJazzerJS && p.pendingFinding != nil {
+			return nil
+		}
 		return finding
 	}
 
@@ -436,14 +444,46 @@ func (p *parser) parseAsJazzerFinding(line string) *finding.Finding {
 	return nil
 }
 
-func (p *parser) parseAsJestFinding(line string) *finding.Finding {
-	_, found := regexutil.FindNamedGroupsMatch(jestFindingBeginningPattern, line)
+func (p *parser) parseAsJazzerJSFinding(line string) *finding.Finding {
+	_, found := regexutil.FindNamedGroupsMatch(beginningOfJestReportPattern, line)
 	if found {
-		p.foundJestFinding = true
+		p.foundBeginningOfJestReport = true
+		return nil
+	}
 
+	result, found := regexutil.FindNamedGroupsMatch(jazzerJSExceptionErrorPattern, line)
+	if found {
 		return &finding.Finding{
-			Type: finding.ErrorTypeWarning,
-			Logs: []string{line},
+			Type:    finding.ErrorTypeWarning,
+			Details: result["message"],
+			Logs:    []string{line},
+		}
+	}
+
+	_, found = regexutil.FindNamedGroupsMatch(jazzerJSCommandInjectionPattern, line)
+	if found {
+		return &finding.Finding{
+			Type:    finding.ErrorTypeWarning,
+			Details: "Command Injection",
+			Logs:    []string{line},
+		}
+	}
+
+	_, found = regexutil.FindNamedGroupsMatch(jazzerJSPathTraveralPattern, line)
+	if found {
+		return &finding.Finding{
+			Type:    finding.ErrorTypeWarning,
+			Details: "Path Traversal",
+			Logs:    []string{line},
+		}
+	}
+
+	_, found = regexutil.FindNamedGroupsMatch(jazzerJSPrototypePollutionPattern, line)
+	if found {
+		return &finding.Finding{
+			Type:    finding.ErrorTypeWarning,
+			Details: "Prototype Pollution",
+			Logs:    []string{line},
 		}
 	}
 
@@ -588,10 +628,15 @@ func (p *parser) finalizeAndSendPendingFinding(ctx context.Context) error {
 	// Parse the stack trace
 	parserOpts := &stacktrace.ParserOptions{
 		ProjectDir:      p.ProjectDir,
+		SourceMap:       p.SourceMap,
 		SupportJazzer:   p.SupportJazzer,
 		SupportJazzerJS: p.SupportJazzerJS,
 	}
-	p.pendingFinding.StackTrace, err = stacktrace.NewParser(parserOpts).Parse(p.pendingFinding.Logs)
+	parser, err := stacktrace.NewParser(parserOpts)
+	if err != nil {
+		return err
+	}
+	p.pendingFinding.StackTrace, err = parser.Parse(p.pendingFinding.Logs)
 	if err != nil {
 		return err
 	}

@@ -15,8 +15,8 @@ import (
 
 // BootstrapExampleProjectForTest copies the given example project to a temporary folder
 // and changes into that directory.
-func BootstrapExampleProjectForTest(prefix, exampleName string) (tempDir string, cleanup func()) { //nolint:nonamedreturns
-	tempDir, cleanup = ChdirToTempDir(prefix)
+func BootstrapExampleProjectForTest(t *testing.T, prefix, exampleName string) string {
+	tempDir := ChdirToTempDir(t, prefix)
 
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {
@@ -31,7 +31,7 @@ func BootstrapExampleProjectForTest(prefix, exampleName string) (tempDir string,
 		panic(fmt.Sprintf("copying %v to %v failed: %+v", examplePath, tempDir, errors.WithStack(err)))
 	}
 
-	return tempDir, cleanup
+	return tempDir
 }
 
 func BootstrapEmptyProject(t *testing.T, prefix string) string {

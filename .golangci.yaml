@@ -7,6 +7,7 @@ linters:
     - nonamedreturns
     - staticcheck
     - revive
+    - wrapcheck
   presets:
     - unused
 
@@ -31,6 +32,34 @@ linters-settings:
       - commentFormatting
       - ifElseChain
       - singleCaseSwitch
+  wrapcheck:
+    ignoreSigs:
+      # all go error pkg related signatures
+      - .Errorf(
+      - errors.New(
+      - errors.Unwrap(
+      - errors.Join(
+      - .Wrap(
+      - .Wrapf(
+      - .WithMessage(
+      - .WithMessagef(
+      - .WithStack(
+      # our own error signatures
+      - .WrapIncorrectUsageError(
+      - .WrapCouldBeSandboxError(
+      - .WrapExecError(
+      - .WrapSilentError
+      # only check external packages
+      - code-intelligence.com
+      # context doesn't really need to be wrapped/have a stack trace
+      - context.Context
+    ignorePackageGlobs:
+      # ignoring test packages because we check for errors and don't need to wrap them
+      - "integration-tests"
+      - "e2e"
+      - "internal/testutil"
 
 run:
   timeout: 3m
+  skip-dirs:
+    - scratch

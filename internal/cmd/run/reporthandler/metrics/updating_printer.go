@@ -7,7 +7,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gookit/color"
 	"github.com/pkg/errors"
 	"github.com/pterm/pterm"
 
@@ -16,16 +15,11 @@ import (
 )
 
 func NewUpdatingPrinter(output io.Writer) (*UpdatingPrinter, error) {
-	// pterm.SpinnerPrinter doesn't support specifying the output, it
-	// always uses color.output, so we have to set that. Note that this
-	// affects the default output of all methods from the pterm and
-	// color packages.
-	color.SetOutput(output)
+	spinnerPrinter := pterm.DefaultSpinner.WithShowTimer(false).WithWriter(output)
 
 	var err error
 	p := &UpdatingPrinter{
-		SpinnerPrinter: pterm.DefaultSpinner.WithShowTimer(false),
-		startedAt:      time.Now(),
+		SpinnerPrinter: spinnerPrinter,
 		output:         output,
 		lastMetrics:    &atomic.Value{},
 	}
@@ -37,14 +31,6 @@ func NewUpdatingPrinter(output io.Writer) (*UpdatingPrinter, error) {
 	}
 
 	p.ticker = time.NewTicker(time.Second)
-	go func() {
-		for range p.ticker.C {
-			if !p.SpinnerPrinter.IsActive {
-				break
-			}
-			p.Update()
-		}
-	}()
 
 	return p, nil
 }
@@ -52,13 +38,31 @@ func NewUpdatingPrinter(output io.Writer) (*UpdatingPrinter, error) {
 type UpdatingPrinter struct {
 	*pterm.SpinnerPrinter
 	ticker    *time.Ticker
+	started   bool
 	startedAt time.Time
 	output    io.Writer
 
 	lastMetrics *atomic.Value
 }
 
-func (p *UpdatingPrinter) Update() {
+func (p *UpdatingPrinter) Start() {
+	if p.started {
+		return
+	}
+	p.started = true
+	p.startedAt = time.Now()
+
+	go func() {
+		for range p.ticker.C {
+			if !p.SpinnerPrinter.IsActive {
+				break
+			}
+			p.update()
+		}
+	}()
+}
+
+func (p *UpdatingPrinter) update() {
 	lastMetrics, ok := p.lastMetrics.Load().(*report.FuzzingMetric)
 	if ok {
 		lastMetrics.SecondsSinceLastFeature += 1

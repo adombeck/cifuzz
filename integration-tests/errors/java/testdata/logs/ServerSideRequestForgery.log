@@ -1,0 +1,21 @@
+Security Issue: Server Side Request Forgery (SSRF) in checkSsrf (com.code_intelligence.jazzer.sanitizers.ServerSideRequestForgery:115)
+Date: 2023-08-08 11:03:54.518044571 +0200 CEST
+
+  == Java Exception: com.code_intelligence.jazzer.api.FuzzerSecurityIssueMedium: Server Side Request Forgery (SSRF)
+  Attempted connection to: localhost:80
+  Requests to destinations based on untrusted data could lead to exfiltration of sensitive data or exposure of internal services.
+
+  If the fuzz test is expected to perform network connections, call com.code_intelligence.jazzer.api.BugDetectors#allowNetworkConnections at the beginning of your fuzz test and optionally provide a predicate matching the expected hosts.
+        at com.code_intelligence.jazzer.sanitizers.ServerSideRequestForgery.checkSsrf(ServerSideRequestForgery.java:115)
+        at com.code_intelligence.jazzer.sanitizers.ServerSideRequestForgery.checkSsrfSocket(ServerSideRequestForgery.java:62)
+        at java.base/java.net.Socket.connect(Socket.java:633)
+        at java.base/java.net.Socket.connect(Socket.java:583)
+        at java.base/java.net.Socket.<init>(Socket.java:507)
+        at java.base/java.net.Socket.<init>(Socket.java:287)
+        at com.collection.ServerSideRequestForgeryFuzzTest.fuzzTest(ServerSideRequestForgeryFuzzTest.java:12)
+  == libFuzzer crashing input ==
+  MS: 0 ; base unit: 0000000000000000000000000000000000000000
+
+
+  artifact_prefix='/tmp/cifuzz-java_cpp-testdata-1611519518/src/test/resources/com/collection/ServerSideRequestForgeryFuzzTestInputs/fuzzTest/'; Test unit written to .cifuzz-findings/eager_arachnid/crashing-input
+  Base64:

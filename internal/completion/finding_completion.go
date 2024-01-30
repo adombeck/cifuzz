@@ -26,7 +26,7 @@ func ValidFindings(cmd *cobra.Command, args []string, toComplete string) ([]stri
 		return nil, cobra.ShellCompDirectiveError
 	}
 
-	findings, err := finding.ListFindings(projectDir, nil)
+	findings, err := finding.LocalFindings(projectDir, nil)
 	if err != nil {
 		log.Error(err)
 		return nil, cobra.ShellCompDirectiveError

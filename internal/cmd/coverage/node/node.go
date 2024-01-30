@@ -12,11 +12,10 @@ import (
 
 	"github.com/pkg/errors"
 
-	"code-intelligence.com/cifuzz/internal/cmd/coverage/summary"
-	"code-intelligence.com/cifuzz/internal/cmdutils"
 	"code-intelligence.com/cifuzz/internal/coverage"
 	"code-intelligence.com/cifuzz/pkg/log"
 	"code-intelligence.com/cifuzz/pkg/options"
+	parser "code-intelligence.com/cifuzz/pkg/parser/coverage"
 	"code-intelligence.com/cifuzz/util/executil"
 	"code-intelligence.com/cifuzz/util/stringutil"
 )
@@ -73,7 +72,11 @@ func (cov *CoverageGenerator) GenerateCoverageReport() (string, error) {
 		return "", errors.WithStack(err)
 	}
 	defer reportFile.Close()
-	summary.ParseLcov(reportFile).PrintTable(cov.Stderr)
+	summary, err := parser.ParseLCOVReportIntoSummary(reportFile)
+	if err != nil {
+		return "", err
+	}
+	summary.PrintTable(cov.Stderr)
 
 	// the index.html file is located in the subfolder lcov-report
 	if cov.OutputFormat == "html" {
@@ -101,8 +104,7 @@ func (cov *CoverageGenerator) validateFuzzTest() error {
 
 	// check if response is empty
 	if strings.TrimSpace(string(output)) == "" {
-		log.Error(errors.New("fuzz test not found"))
-		return cmdutils.ErrSilent
+		return errors.New("No fuzz test found")
 	}
 
 	return nil
@@ -117,6 +119,7 @@ func (cov *CoverageGenerator) runNPXCommand(args []string, stdout, stderr io.Wri
 	// terminate progress group if receiving exit signals
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
+	defer signal.Stop(sigs)
 	go func() {
 		<-sigs
 		err := cmd.TerminateProcessGroup()

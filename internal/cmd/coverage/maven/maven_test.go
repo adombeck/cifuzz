@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"code-intelligence.com/cifuzz/internal/build/maven"
+	"code-intelligence.com/cifuzz/internal/build/java/maven"
 )
 
 type MavenRunnerMock struct {

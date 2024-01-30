@@ -13,11 +13,9 @@ import (
 	"github.com/otiai10/copy"
 	"github.com/pkg/errors"
 
-	"code-intelligence.com/cifuzz/internal/config"
 	"code-intelligence.com/cifuzz/pkg/log"
 	"code-intelligence.com/cifuzz/pkg/parser/libfuzzer/stacktrace"
 	"code-intelligence.com/cifuzz/util/fileutil"
-	"code-intelligence.com/cifuzz/util/sliceutil"
 )
 
 const (
@@ -28,6 +26,8 @@ const (
 )
 
 type Finding struct {
+	Origin string
+
 	Name               string        `json:"name,omitempty"`
 	Type               ErrorType     `json:"type,omitempty"`
 	InputData          []byte        `json:"input_data,omitempty"`
@@ -35,7 +35,7 @@ type Finding struct {
 	Details            string        `json:"details,omitempty"`
 	HumanReadableInput string        `json:"human_readable_input,omitempty"`
 	MoreDetails        *ErrorDetails `json:"more_details,omitempty"`
-	Tag                uint64        `json:"tag,omitempty"`
+	Tag                string        `json:"tag,omitempty"`
 
 	// Note: The following fields don't exist in the protobuf
 	// representation used in the Code Intelligence core repository.
@@ -149,9 +149,18 @@ func (f *Finding) saveJSON(jsonPath string) error {
 	return nil
 }
 
+func (f *Finding) Remove(projectDir string) error {
+	findingDir := filepath.Join(projectDir, nameFindingsDir, f.Name)
+	err := os.RemoveAll(findingDir)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	return nil
+}
+
 // CopyInputFileAndUpdateFinding copies the input file to the finding directory and
 // the seed corpus directory and adjusts the finding logs accordingly.
-func (f *Finding) CopyInputFileAndUpdateFinding(projectDir, seedCorpusDir, buildSystem string) error {
+func (f *Finding) CopyInputFileAndUpdateFinding(projectDir, seedCorpusDir string) error {
 	// Acquire a file lock to avoid races with other cifuzz processes
 	// running in parallel
 	findingDir := filepath.Join(projectDir, nameFindingsDir, f.Name)
@@ -170,10 +179,10 @@ func (f *Finding) CopyInputFileAndUpdateFinding(projectDir, seedCorpusDir, build
 	}
 
 	// Actually copy the input file
-	err = f.copyInputFile(projectDir, seedCorpusDir, buildSystem)
+	err = f.copyInputFile(projectDir, seedCorpusDir)
 
 	// Release the file lock
-	unlockErr := mutex.Unlock()
+	unlockErr := mutex.Close()
 	if err == nil {
 		return errors.WithStack(unlockErr)
 	}
@@ -183,7 +192,7 @@ func (f *Finding) CopyInputFileAndUpdateFinding(projectDir, seedCorpusDir, build
 	return err
 }
 
-func (f *Finding) copyInputFile(projectDir, seedCorpusDir, buildSystem string) error {
+func (f *Finding) copyInputFile(projectDir, seedCorpusDir string) error {
 	findingDir := filepath.Join(projectDir, nameFindingsDir, f.Name)
 	path := filepath.Join(findingDir, nameCrashingInput)
 
@@ -195,23 +204,19 @@ func (f *Finding) copyInputFile(projectDir, seedCorpusDir, buildSystem string) e
 		return errors.WithStack(err)
 	}
 
-	if sliceutil.Contains([]string{
-		config.BuildSystemCMake, config.BuildSystemBazel, config.BuildSystemOther,
-	},
-		buildSystem,
-	) {
-		// Copy the input file to the seed corpus dir.
-		// This is only necessary for c/c++ projects.
-		err = os.MkdirAll(seedCorpusDir, 0o755)
-		if err != nil {
-			return errors.WithStack(err)
-		}
-		f.seedPath = filepath.Join(seedCorpusDir, f.Name)
-		err = copy.Copy(f.InputFile, f.seedPath)
-		if err != nil {
-			return errors.WithStack(err)
-		}
+	// Copy the input file to the seed corpus dir.
+	err = os.MkdirAll(seedCorpusDir, 0o755)
+	if err != nil {
+		return errors.WithStack(err)
 	}
+	// Different inputs can result in the same finding, so we append the
+	// original basename to avoid basename collisions.
+	f.seedPath = filepath.Join(seedCorpusDir, f.Name+"-"+filepath.Base(f.InputFile))
+	err = copy.Copy(f.InputFile, f.seedPath)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	log.Debugf("Copied input file from %s to %s", f.InputFile, f.seedPath)
 
 	// Replace the old filename in the finding logs. Replace it with the
 	// relative path to not leak the directory structure of the current
@@ -237,6 +242,19 @@ func (f *Finding) copyInputFile(projectDir, seedCorpusDir, buildSystem string) e
 	}
 	f.InputFile = pathRelativeToProjectDir
 	return nil
+}
+
+func (f *Finding) SourceLocation() string {
+	if f.StackTrace != nil && len(f.StackTrace) > 0 {
+		stackFrame := f.StackTrace[0]
+		// in some cases ASan/Libfuzzer do not include the column in the stack trace
+		if stackFrame.Column != 0 {
+			return fmt.Sprintf("%s:%d:%d", stackFrame.SourceFile, stackFrame.Line, stackFrame.Column)
+		} else {
+			return fmt.Sprintf("%s:%d", stackFrame.SourceFile, stackFrame.Line)
+		}
+	}
+	return "n/a"
 }
 
 func (f *Finding) ShortDescriptionWithName() string {
@@ -278,16 +296,10 @@ func (f *Finding) ShortDescriptionColumns() []string {
 
 	// add location (file, function, line)
 	if len(f.StackTrace) > 0 {
-		f := f.StackTrace[0]
-		var location string
-		// in some cases ASan/Libfuzzer do not include the column in the stack trace
-		if f.Column != 0 {
-			location = fmt.Sprintf("%s:%d:%d", f.SourceFile, f.Line, f.Column)
-		} else {
-			location = fmt.Sprintf("%s:%d", f.SourceFile, f.Line)
-		}
-		if f.Function != "" {
-			columns = append(columns, fmt.Sprintf("in %s (%s)", f.Function, location))
+		st := f.StackTrace[0]
+		location := f.SourceLocation()
+		if st.Function != "" {
+			columns = append(columns, fmt.Sprintf("in %s (%s)", st.Function, location))
 		} else {
 			columns = append(columns, fmt.Sprintf("in %s", location))
 		}
@@ -295,9 +307,9 @@ func (f *Finding) ShortDescriptionColumns() []string {
 	return columns
 }
 
-// ListFindings parses the JSON files of all findings and returns the
+// LocalFindings parses the JSON files of all findings and returns the
 // result.
-func ListFindings(projectDir string, errorDetails *[]ErrorDetails) ([]*Finding, error) {
+func LocalFindings(projectDir string, errorDetails []*ErrorDetails) ([]*Finding, error) {
 	findingsDir := filepath.Join(projectDir, nameFindingsDir)
 	entries, err := os.ReadDir(findingsDir)
 	if os.IsNotExist(err) {
@@ -328,7 +340,7 @@ func ListFindings(projectDir string, errorDetails *[]ErrorDetails) ([]*Finding, 
 // the result.
 // If the specified finding does not exist, a NotExistError is returned.
 // If the user is logged in, the error details are added to the finding.
-func LoadFinding(projectDir, findingName string, errorDetails *[]ErrorDetails) (*Finding, error) {
+func LoadFinding(projectDir, findingName string, errorDetails []*ErrorDetails) (*Finding, error) {
 	findingDir := filepath.Join(projectDir, nameFindingsDir, findingName)
 	jsonPath := filepath.Join(findingDir, nameJSONFile)
 	bytes, err := os.ReadFile(jsonPath)
@@ -344,6 +356,7 @@ func LoadFinding(projectDir, findingName string, errorDetails *[]ErrorDetails) (
 		return nil, errors.WithStack(err)
 	}
 
+	f.Origin = "Local"
 	f.EnhanceWithErrorDetails(errorDetails)
 
 	return &f, nil
@@ -351,17 +364,27 @@ func LoadFinding(projectDir, findingName string, errorDetails *[]ErrorDetails) (
 
 // EnhanceWithErrorDetails adds more details to the finding by parsing the
 // error details file.
-func (f *Finding) EnhanceWithErrorDetails(errorDetails *[]ErrorDetails) {
+func (f *Finding) EnhanceWithErrorDetails(errorDetails []*ErrorDetails) {
 	if errorDetails == nil {
 		return
 	}
-	for _, d := range *errorDetails {
+	for _, d := range errorDetails {
 		if (f.MoreDetails != nil && f.MoreDetails.ID == d.ID) ||
 			strings.Contains(
 				strings.ToLower(f.ShortDescriptionColumns()[0]),
 				strings.ToLower(d.Name)) {
 
-			f.MoreDetails = &d
+			// Store the error details but keep the original ID
+			var originalID string
+			if f.MoreDetails != nil {
+				originalID = f.MoreDetails.ID
+			}
+
+			f.MoreDetails = d
+
+			if originalID != "" {
+				f.MoreDetails.ID = originalID
+			}
 			return
 		}
 	}

@@ -11,7 +11,7 @@ import (
 	"github.com/Masterminds/semver"
 	"github.com/pkg/errors"
 
-	"code-intelligence.com/cifuzz/internal/build/gradle"
+	"code-intelligence.com/cifuzz/internal/build/java/gradle"
 	"code-intelligence.com/cifuzz/pkg/log"
 )
 
@@ -67,7 +67,7 @@ var deps = Dependencies{
 	},
 	LLVMCov: {
 		Key:        LLVMCov,
-		MinVersion: *semver.MustParse("11.0.0"),
+		MinVersion: *semver.MustParse("12.0.0"),
 		GetVersion: func(dep *Dependency, projectDir string) (*semver.Version, error) {
 			path, err := dep.finder.LLVMCovPath()
 			if err != nil {
@@ -89,7 +89,11 @@ var deps = Dependencies{
 		// llvm-profdata provides no version information
 		MinVersion: *semver.MustParse("0.0.0"),
 		GetVersion: func(dep *Dependency, projectDir string) (*semver.Version, error) {
-			return semver.NewVersion("0.0.0")
+			ver, err := semver.NewVersion("0.0.0")
+			if err != nil {
+				return nil, errors.WithStack(err)
+			}
+			return ver, nil
 		},
 		Installed: func(dep *Dependency, projectDir string) bool {
 			path, err := dep.finder.LLVMProfDataPath()
@@ -142,7 +146,11 @@ var deps = Dependencies{
 		Key:        Perl,
 		MinVersion: *semver.MustParse("0.0.0"),
 		GetVersion: func(dep *Dependency, projectDir string) (*semver.Version, error) {
-			return semver.NewVersion("0.0.0")
+			ver, err := semver.NewVersion("0.0.0")
+			if err != nil {
+				return nil, errors.WithStack(err)
+			}
+			return ver, nil
 		},
 		Installed: func(dep *Dependency, projectDir string) bool {
 			return dep.checkFinder(dep.finder.PerlPath)
@@ -160,7 +168,11 @@ var deps = Dependencies{
 		Key:        Maven,
 		MinVersion: *semver.MustParse("0.0.0"),
 		GetVersion: func(dep *Dependency, projectDir string) (*semver.Version, error) {
-			return semver.NewVersion("0.0.0")
+			ver, err := semver.NewVersion("0.0.0")
+			if err != nil {
+				return nil, errors.WithStack(err)
+			}
+			return ver, nil
 		},
 		Installed: func(dep *Dependency, projectDir string) bool {
 			return dep.checkFinder(dep.finder.MavenPath)
@@ -168,14 +180,14 @@ var deps = Dependencies{
 	},
 	Gradle: {
 		Key:        Gradle,
-		MinVersion: *semver.MustParse("0.0.0"),
+		MinVersion: *semver.MustParse("6.1.0"),
 		GetVersion: gradleVersion,
 		Installed: func(dep *Dependency, projectDir string) bool {
 			if projectDir != "" {
 				// Using the gradlew in the project dir is the preferred way
 				wrapper, err := gradle.FindGradleWrapper(projectDir)
 				if err != nil && !errors.Is(err, os.ErrNotExist) {
-					log.Error(errors.Wrap(err, "Error while checking for existing 'gradlew' in project dir. Gradle will be checked instead"))
+					log.Error(errors.WithMessage(err, "Error while checking for existing 'gradlew' in project dir. Gradle will be checked instead"))
 					return dep.checkFinder(dep.finder.GradlePath)
 				}
 				if wrapper != "" {
@@ -221,11 +233,23 @@ func getMinVersionBazel() semver.Version {
 // Keep in sync with examples/bazel/WORKSPACE.
 const CIFuzzBazelCommit = "b013aa0f90fe8ac60adfc6d9640a9cfa451dda9e"
 
-const RulesFuzzingSHA256 = "4beab98d88e4bf2d04da0412d413a1364f95e5eb88963e15e603bee1410fcedf"
+const RulesFuzzingSHA256 = "ff52ef4845ab00e95d29c02a9e32e9eff4e0a4c9c8a6bcf8407a2f19eb3f9190"
 
-var RulesFuzzingHTTPArchiveRule = fmt.Sprintf(`http_archive(
+var RulesFuzzingWORKSPACEContent = fmt.Sprintf(`http_archive(
         name = "rules_fuzzing",
         sha256 = "%s",
-        strip_prefix = "rules_fuzzing-ca617e846d0f92e00a903903b0554ea9142e1132",
-        urls = ["https://github.com/CodeIntelligenceTesting/rules_fuzzing/archive/ca617e846d0f92e00a903903b0554ea9142e1132.tar.gz"],
-    )`, RulesFuzzingSHA256)
+        strip_prefix = "rules_fuzzing-0.4.1",
+        urls = ["https://github.com/bazelbuild/rules_fuzzing/releases/download/v0.4.1/rules_fuzzing-0.4.1.zip"],
+    )
+
+    load("@rules_fuzzing//fuzzing:repositories.bzl", "rules_fuzzing_dependencies")
+
+    rules_fuzzing_dependencies()
+
+    load("@rules_fuzzing//fuzzing:init.bzl", "rules_fuzzing_init")
+
+    rules_fuzzing_init()
+
+    load("@fuzzing_py_deps//:requirements.bzl", "install_deps")
+
+    install_deps()`, RulesFuzzingSHA256)

@@ -50,7 +50,7 @@ func TestAdditionalJazzerParameters(t *testing.T, cifuzz, dir string) {
 
 		lines := strings.Split(string(out), "\n")
 		for _, l := range lines {
-			if strings.Contains(l, "-cp") {
+			if strings.Contains(l, "com.code_intelligence.jazzer.Jazzer") {
 				assert.Contains(t, l, tc.arg, "java call does not include jazzer flag")
 				break
 			}

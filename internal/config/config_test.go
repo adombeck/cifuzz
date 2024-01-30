@@ -288,37 +288,37 @@ func TestEnsureProjectEntry(t *testing.T) {
 		},
 		{
 			name: "existing project",
-			expected: `## Set URL of the CI App
+			expected: `## Set URL of CI Sense
 #server: https://app.code-intelligence.com
 
-## Set the project name on the CI App
+## Set the project name on CI Sense
 project: myProject`,
-			input: `## Set URL of the CI App
+			input: `## Set URL of CI Sense
 #server: https://app.code-intelligence.com
 
-## Set the project name on the CI App
+## Set the project name on CI Sense
 project: my-project-1a2b3c4d`,
 		},
 		{
 			name: "commented out project",
-			expected: `## Set URL of the CI App
+			expected: `## Set URL of CI Sense
 #server: https://app.code-intelligence.com
 
-## Set the project name on the CI App
+## Set the project name on CI Sense
 project: myProject`,
-			input: `## Set URL of the CI App
+			input: `## Set URL of CI Sense
 #server: https://app.code-intelligence.com
 
-## Set the project name on the CI App
+## Set the project name on CI Sense
 #project: my-project-1a2b3c4d`,
 		},
 		{
 			name: "non empty with no project",
-			expected: `## Set URL of the CI App
+			expected: `## Set URL of CI Sense
 #server: https://app.code-intelligence.com
 project: myProject
 `,
-			input: `## Set URL of the CI App
+			input: `## Set URL of CI Sense
 #server: https://app.code-intelligence.com`,
 		},
 	}

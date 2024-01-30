@@ -51,9 +51,7 @@ const run = async () => {
 		// following the go pseudo versions format
 		// https://go.dev/ref/mod#pseudo-versions
 		const nextPatchVersion = inc(lastVersion, "patch");
-		const thisVersion = `v${nextPatchVersion}-0.${date.toFormat(
-			"yyyyLLddhhmmss"
-		)}-${commit}`;
+		const thisVersion = `v${nextPatchVersion}-0.${date.toFormat("yyyyLLddhhmmss")}-${commit}`;
 		if (valid(thisVersion) == null) {
 			setFailed(`generated invalid version ${thisVersion}`);
 			return;

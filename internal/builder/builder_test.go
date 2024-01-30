@@ -34,7 +34,7 @@ func TestIntegration_Version(t *testing.T) {
 
 	cifuzz := filepath.Join(testDir, "bin", "cifuzz")
 	cmd := exec.Command(cifuzz, "--version")
-	cmd.Env = testutil.SetupCoverage(t, os.Environ(), "integration")
+	_, cmd.Env = testutil.SetupCoverage(t, os.Environ(), "integration")
 	require.NoError(t, err)
 	out, err := cmd.Output()
 	require.NoError(t, err)

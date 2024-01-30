@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"code-intelligence.com/cifuzz/internal/build/gradle"
+	"code-intelligence.com/cifuzz/internal/build/java/gradle"
 )
 
 type GradleRunnerMock struct {

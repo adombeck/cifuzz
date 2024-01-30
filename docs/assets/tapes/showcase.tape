@@ -1,12 +1,14 @@
-Output docs/assets/gradle_showcase.gif
+Output docs/assets/showcase.gif
 
 Require cifuzz
 Require gradle
 Require nvim
 
-Set FontSize 18
-Set Width 1200
-Set Height 600
+Set Theme "TokyoNight"
+Set Framerate 30
+Set FontSize 16
+Set Width 1800
+Set Height 900
 
 Sleep 100ms
 
@@ -15,18 +17,14 @@ Type "cd examples/gradle"
 Enter
 Show
 
-Sleep 1s 
-
-Type "cifuzz init"
-Enter
-Sleep 2s
+Sleep 1s
 
 Type "nvim build.gradle"
 Enter
 Sleep 1s
 
-Type "20jo"
-Type@20ms "testImplementation 'com.code-intelligence:jazzer-junit:0.19.0'"
+Type "10jo"
+Type@20ms "id 'com.code-intelligence.cifuzz' version '1.5.0'"
 Escape
 Sleep 3
 Type ":wq"
@@ -38,7 +36,7 @@ Sleep 1s
 Down
 Sleep 500ms
 Enter
-Sleep 2s
+Sleep 3s
 
 Type@30ms "nvim src/test/java/com/example/MyFuzzTest.java"
 Enter
@@ -64,12 +62,12 @@ Sleep 3s
 Type ":wq"
 Enter
 
-Type "cifuzz run com.example.MyFuzzTest"
+Type "cifuzz run com.example.MyFuzzTest::myFuzzTest"
 Enter
 
-Sleep 6s 
+Sleep 6s
 
 Type "cifuzz findings"
-Enter 
+Enter
 
-Sleep 3s 
+Sleep 4s

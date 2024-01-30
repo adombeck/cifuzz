@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -23,6 +24,7 @@ import (
 
 	"code-intelligence.com/cifuzz/internal/cmd/remoterun/progress"
 	"code-intelligence.com/cifuzz/internal/cmdutils"
+	"code-intelligence.com/cifuzz/internal/version"
 	"code-intelligence.com/cifuzz/pkg/log"
 	"code-intelligence.com/cifuzz/util/stringutil"
 )
@@ -50,6 +52,8 @@ func (e APIError) Unwrap() error {
 	return e.err
 }
 
+// responseToAPIError converts a non-200 response to an APIError with the
+// response status code and message.
 func responseToAPIError(resp *http.Response) error {
 	msg := resp.Status
 	body, err := io.ReadAll(resp.Body)
@@ -99,20 +103,73 @@ type Artifact struct {
 	ResourceName string `json:"resource-name"`
 }
 
-func NewClient(server string, version string) *APIClient {
+func NewClient(server string) *APIClient {
 	return &APIClient{
 		Server:    server,
-		UserAgent: "cifuzz/" + version + " " + runtime.GOOS + "-" + runtime.GOARCH,
+		UserAgent: "cifuzz/" + version.Version + " " + runtime.GOOS + "-" + runtime.GOARCH,
 	}
 }
 
+// ConvertProjectNameFromAPI converts a project name from the API format to a
+// format we can use internally.
+// The API format is projects/<project-name>, where <project-name> is URL encoded.
+// The internal format is <project-name>, where <project-name> is URL decoded.
+// We want to use the internal format internally because it's more user friendly and readable.
+func ConvertProjectNameFromAPI(projectName string) (string, error) {
+	projectName = strings.TrimPrefix(projectName, "projects/")
+
+	// unescape the name here so that we don't have to do it everywhere.
+	// We only need to escape it when we send it to the API.
+	projectName, err := url.QueryUnescape(projectName)
+	if err != nil {
+		return "", errors.WithStack(err)
+	}
+
+	return projectName, nil
+}
+
+// ConvertProjectNameForUseWithAPIV1V2 converts a project name from the internal
+// format to the API format. The API format is projects/<project-name>, where
+// <project-name> is URL encoded.
+func ConvertProjectNameForUseWithAPIV1V2(projectName string) string {
+	// remove the projects/ prefix if it exists so that we can call PathEscape
+	if strings.HasPrefix(projectName, "projects/") {
+		projectName = strings.TrimPrefix(projectName, "projects/")
+	}
+	// escape the name here so that we don't have to do it everywhere.
+	// We only need to escape it when we send it to the API.
+	projectName = url.PathEscape(projectName)
+
+	// add the projects/ prefix because the API requires it
+	projectName = "projects/" + projectName
+
+	return projectName
+}
+
+// ConvertProjectNameForUseWithAPIV3 converts a project name to the v3 API
+// format. The API format is <project-name>, where <project-name> is URL
+// unescaped.
+func ConvertProjectNameForUseWithAPIV3(projectName string) (string, error) {
+	projectName = strings.TrimPrefix(projectName, "projects/")
+
+	projectName, err := url.QueryUnescape(projectName)
+	if err != nil {
+		return "", errors.WithStack(err)
+	}
+	return projectName, nil
+}
+
 func (client *APIClient) UploadBundle(path string, projectName string, token string) (*Artifact, error) {
+
+	projectName = ConvertProjectNameForUseWithAPIV1V2(projectName)
+
 	signalHandlerCtx, cancelSignalHandler := context.WithCancel(context.Background())
 	routines, routinesCtx := errgroup.WithContext(context.Background())
 
 	// Cancel the routines context when receiving a termination signal
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
+	defer signal.Stop(sigs)
 	routines.Go(func() error {
 		select {
 		case <-signalHandlerCtx.Done():
@@ -167,7 +224,13 @@ func (client *APIClient) UploadBundle(path string, projectName string, token str
 	// cancels the operation.
 	var body []byte
 	routines.Go(func() error {
-		defer r.Close()
+		var err error
+		defer func() {
+			closeErr := r.CloseWithError(err)
+			if closeErr != nil {
+				log.Warnf("Failed to close pipe: %v", closeErr)
+			}
+		}()
 		defer cancelSignalHandler()
 		url, err := url.JoinPath(client.Server, "v2", projectName, "artifacts", "import")
 		if err != nil {
@@ -203,15 +266,16 @@ func (client *APIClient) UploadBundle(path string, projectName string, token str
 
 	err := routines.Wait()
 	if err != nil {
+		// Routines.Wait() returns our own errors so it should already have
+		// a stack trace and doesn't need to have one added
+		// nolint: wrapcheck
 		return nil, err
 	}
 
 	artifact := &Artifact{}
 	err = json.Unmarshal(body, artifact)
 	if err != nil {
-		err = errors.WithStack(err)
-		log.Errorf(err, "Failed to parse response from upload bundle API call: %s", err.Error())
-		return nil, cmdutils.WrapSilentError(err)
+		return nil, errors.Wrap(err, "Failed to parse response from upload bundle API call")
 	}
 
 	return artifact, nil
@@ -220,7 +284,7 @@ func (client *APIClient) UploadBundle(path string, projectName string, token str
 func (client *APIClient) StartRemoteFuzzingRun(artifact *Artifact, token string) (string, error) {
 	url, err := url.JoinPath("/v1", artifact.ResourceName+":run")
 	if err != nil {
-		return "", err
+		return "", errors.WithStack(err)
 	}
 	resp, err := client.sendRequest("POST", url, nil, token)
 	if err != nil {
@@ -244,9 +308,7 @@ func (client *APIClient) StartRemoteFuzzingRun(artifact *Artifact, token string)
 	}
 	campaignRunNameJSON, ok := objmap["name"]
 	if !ok {
-		err = errors.Errorf("Server response doesn't include run name: %v", stringutil.PrettyString(objmap))
-		log.Error(err)
-		return "", cmdutils.WrapSilentError(err)
+		return "", errors.Errorf("Server response doesn't include run name: %v", stringutil.PrettyString(objmap))
 	}
 	var campaignRunName string
 	err = json.Unmarshal(campaignRunNameJSON, &campaignRunName)
@@ -258,7 +320,7 @@ func (client *APIClient) StartRemoteFuzzingRun(artifact *Artifact, token string)
 }
 
 // sendRequest sends a request to the API server with a default timeout of 30 seconds.
-func (client *APIClient) sendRequest(method string, endpoint string, body io.Reader, token string) (*http.Response, error) {
+func (client *APIClient) sendRequest(method string, endpoint string, body []byte, token string) (*http.Response, error) {
 	// we use 30 seconds as a conservative timeout for the API server to
 	// respond to a request. We might have to revisit this value in the future
 	// after the rollout of our API features.
@@ -267,30 +329,40 @@ func (client *APIClient) sendRequest(method string, endpoint string, body io.Rea
 }
 
 // sendRequestWithTimeout sends a request to the API server with a timeout.
-func (client *APIClient) sendRequestWithTimeout(method string, endpoint string, body io.Reader, token string, timeout time.Duration) (*http.Response, error) {
+func (client *APIClient) sendRequestWithTimeout(method string, endpoint string, body []byte, token string, timeout time.Duration) (*http.Response, error) {
 	url, err := url.JoinPath(client.Server, endpoint)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
-	req, err := http.NewRequestWithContext(context.Background(), method, url, body)
+
+	req, err := http.NewRequestWithContext(context.Background(), method, url, bytes.NewReader(body))
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 
 	req.Header.Set("User-Agent", client.UserAgent)
 	req.Header.Add("Authorization", "Bearer "+token)
+	req.Header.Add("Accept", "application/json")
+	req.Header.Add("Content-Type", "application/json")
 
+	log.Debugf("Sending HTTP request: %s %s\n%s", method, endpoint, body)
 	httpClient := &http.Client{Transport: getCustomTransport(), Timeout: timeout}
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, WrapConnectionError(errors.WithStack(err))
 	}
 
+	log.Debugf("Received response for HTTP request: %d %s", resp.StatusCode, endpoint)
+
 	return resp, nil
 }
 
 // IsTokenValid checks if the token is valid by querying the API server.
 func (client *APIClient) IsTokenValid(token string) (bool, error) {
+	if token == "" {
+		return false, nil
+	}
+
 	// TOOD: Change this to use another check without querying projects
 	_, err := client.ListProjects(token)
 	if err != nil {
@@ -324,7 +396,7 @@ func ValidateAndNormalizeServerURL(server string) (string, error) {
 		// See if prefixing https:// makes it a valid URL
 		err = validateURL("https://" + server)
 		if err != nil {
-			log.Error(err, fmt.Sprintf("server %q is not a valid URL", server))
+			return "", errors.WithMessagef(err, "Server '%s' is not a valid URL", server)
 		}
 		server = "https://" + server
 	}
@@ -332,7 +404,7 @@ func ValidateAndNormalizeServerURL(server string) (string, error) {
 	// normalize server URL by removing trailing slash
 	url, err := url.JoinPath(server, "")
 	if err != nil {
-		return "", err
+		return "", errors.Wrapf(err, "Failed to normalize server URL '%s", server)
 	}
 	url = strings.TrimSuffix(url, "/")
 
@@ -344,7 +416,15 @@ func getCustomTransport() *http.Transport {
 	// of https://github.com/golang/go/issues/24135
 	dialer := proxy.FromEnvironment()
 	dialContext := func(ctx context.Context, network, address string) (net.Conn, error) {
-		return dialer.Dial(network, address)
+		conn, err := dialer.Dial(network, address)
+		if err != nil {
+			// This error is being returned to the http package and we
+			// don't know if it could have side effects with an added stack
+			// trace
+			// nolint: wrapcheck
+			return nil, err
+		}
+		return conn, nil
 	}
 	return &http.Transport{DialContext: dialContext}
 }

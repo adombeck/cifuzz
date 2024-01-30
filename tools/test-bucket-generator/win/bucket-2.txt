@@ -1,5 +1,5 @@
+code-intelligence.com/cifuzz/integration-tests/node-typescript
+code-intelligence.com/cifuzz/integration-tests/cmake
 code-intelligence.com/cifuzz/integration-tests/errors/cpp
-code-intelligence.com/cifuzz/integration-tests/java-maven-spring
 code-intelligence.com/cifuzz/internal/bundler
-code-intelligence.com/cifuzz/pkg/runner/libfuzzer/integrationtest
-code-intelligence.com/cifuzz/integration-tests/other
+code-intelligence.com/cifuzz/internal/cmd/coverage/llvm

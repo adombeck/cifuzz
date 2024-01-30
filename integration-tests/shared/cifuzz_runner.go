@@ -14,6 +14,8 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"code-intelligence.com/cifuzz/internal/testutil"
+	"code-intelligence.com/cifuzz/pkg/log"
+	"code-intelligence.com/cifuzz/util/envutil"
 	"code-intelligence.com/cifuzz/util/executil"
 )
 
@@ -57,7 +59,7 @@ func (r *CIFuzzRunner) CommandOutput(t *testing.T, command string, opts *Command
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	t.Logf("Command: %s", cmd.String())
+	log.Printf("Command: %s", cmd.String())
 	err := cmd.Run()
 	require.NoError(t, err)
 
@@ -93,7 +95,7 @@ func (r *CIFuzzRunner) Command(t *testing.T, command string, opts *CommandOption
 		require.NoError(t, err)
 	}()
 
-	t.Logf("Command: %s", cmd.String())
+	log.Printf("Command: %s", cmd.String())
 	err = cmd.Run()
 	require.NoError(t, err)
 
@@ -128,6 +130,7 @@ type RunOptions struct {
 	FuzzTest string
 	WorkDir  string
 	Env      []string
+	Command  []string
 	Args     []string
 
 	ExpectedOutputs              []*regexp.Regexp
@@ -138,10 +141,18 @@ type RunOptions struct {
 
 func (r *CIFuzzRunner) Run(t *testing.T, opts *RunOptions) {
 	t.Helper()
+	var err error
 
-	if opts.Env == nil {
-		opts.Env = os.Environ()
+	if opts.Command == nil {
+		opts.Command = []string{"run"}
 	}
+
+	env := opts.Env
+	env, err = envutil.Setenv(env, "CIFUZZ_INTERACTIVE", "false")
+	require.NoError(t, err)
+	env, err = envutil.Setenv(env, "CIFUZZ_NO_NOTIFICATIONS", "true")
+	require.NoError(t, err)
+	_, env = testutil.SetupCoverage(t, env, "integration")
 
 	if opts.WorkDir == "" {
 		opts.WorkDir = r.DefaultWorkDir
@@ -153,14 +164,12 @@ func (r *CIFuzzRunner) Run(t *testing.T, opts *RunOptions) {
 
 	runCtx, closeRunCtx := context.WithCancel(context.Background())
 	defer closeRunCtx()
-	args := append(
+	args := append(append(opts.Command,
 		[]string{
-			"run", "-v", opts.FuzzTest,
-			"--no-notifications",
+			"-v", opts.FuzzTest,
 			"--engine-arg=-seed=1",
 			"--engine-arg=-runs=1000000",
-			"--interactive=false",
-		},
+		}...),
 		opts.Args...,
 	)
 
@@ -170,7 +179,8 @@ func (r *CIFuzzRunner) Run(t *testing.T, opts *RunOptions) {
 		args...,
 	)
 	cmd.Dir = opts.WorkDir
-	cmd.Env = testutil.SetupCoverage(t, opts.Env, "integration")
+	cmd.Env, err = envutil.Copy(os.Environ(), env)
+	require.NoError(t, err)
 	stdoutPipe, err := cmd.StdoutTeePipe(os.Stdout)
 	require.NoError(t, err)
 	stderrPipe, err := cmd.StderrTeePipe(os.Stderr)
@@ -180,7 +190,7 @@ func (r *CIFuzzRunner) Run(t *testing.T, opts *RunOptions) {
 	// (else the test won't stop).
 	TerminateOnSignal(t, cmd)
 
-	t.Logf("Command: %s", cmd.String())
+	log.Printf("Command: %s", envutil.QuotedCommandWithEnv(cmd.Args, env))
 	err = cmd.Start()
 	require.NoError(t, err)
 
@@ -195,7 +205,6 @@ func (r *CIFuzzRunner) Run(t *testing.T, opts *RunOptions) {
 	outputChecker := outputChecker{
 		mutex:                        &sync.Mutex{},
 		lenExpectedOutputs:           len(opts.ExpectedOutputs),
-		numSeenExpectedOutputs:       0,
 		expectedOutputs:              opts.ExpectedOutputs,
 		unexpectedOutput:             opts.UnexpectedOutput,
 		terminateAfterExpectedOutput: opts.TerminateAfterExpectedOutput,
@@ -246,13 +255,12 @@ func (r *CIFuzzRunner) Run(t *testing.T, opts *RunOptions) {
 		require.NoError(t, runCtx.Err())
 	}
 
-	require.True(t, outputChecker.hasSeenExpectedOutputs, "Did not see %q in fuzzer output", opts.ExpectedOutputs)
+	require.True(t, outputChecker.hasSeenExpectedOutputs, "Did not see %q in fuzzer output", outputChecker.expectedOutputs)
 }
 
 type outputChecker struct {
 	mutex                        *sync.Mutex
 	lenExpectedOutputs           int
-	numSeenExpectedOutputs       int
 	expectedOutputs              []*regexp.Regexp
 	unexpectedOutput             *regexp.Regexp
 	terminateAfterExpectedOutput bool
@@ -273,15 +281,13 @@ func (c *outputChecker) checkOutput(t *testing.T, line string) {
 
 	var remainingExpectedOutputs []*regexp.Regexp
 	for _, expectedOutput := range c.expectedOutputs {
-		if expectedOutput.MatchString(line) {
-			c.numSeenExpectedOutputs += 1
-		} else {
+		if !expectedOutput.MatchString(line) {
 			remainingExpectedOutputs = append(remainingExpectedOutputs, expectedOutput)
 		}
 	}
 	c.expectedOutputs = remainingExpectedOutputs
 
-	if c.numSeenExpectedOutputs == c.lenExpectedOutputs {
+	if len(remainingExpectedOutputs) == 0 {
 		c.hasSeenExpectedOutputs = true
 		if c.terminateAfterExpectedOutput {
 			c.hasCalledTerminationFunc = true

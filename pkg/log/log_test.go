@@ -42,7 +42,7 @@ func TestError_Verbose(t *testing.T) {
 	viper.Set("verbose", true)
 	Errorf(errors.New("test-error"), "Test")
 	viper.Set("verbose", false)
-	checkOutput(t, "Test\n", "test-error")
+	checkOutput(t, "Test\n", "code-intelligence.com/")
 }
 
 func TestError_NoVerbose(t *testing.T) {

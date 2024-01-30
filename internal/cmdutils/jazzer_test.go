@@ -14,7 +14,7 @@ import (
 	"code-intelligence.com/cifuzz/pkg/stubs"
 )
 
-func TestListJVMFuzzTests(t *testing.T) {
+func TestListJVMFuzzTestsByRegex(t *testing.T) {
 	projectDir := testutil.MkdirTemp(t, "", "list-jvm-files")
 	testDir := filepath.Join(projectDir, "src", "test")
 
@@ -50,19 +50,28 @@ func TestListJVMFuzzTests(t *testing.T) {
 
 	// Check result
 	testDirs := []string{filepath.Join(projectDir, "src", "test")}
-	result, err := ListJVMFuzzTests(testDirs, "com.example")
+	result, err := ListJVMFuzzTestsByRegex(testDirs, "com.example")
 	require.NoError(t, err)
 	assert.Len(t, result, 2)
-	assert.Contains(t, result, "com.example.FuzzTestCase1")
-	assert.Contains(t, result, "com.example.FuzzTestCase3")
+	assert.Contains(t, result, "com.example.FuzzTestCase1::myFuzzTest")
+	assert.Contains(t, result, "com.example.FuzzTestCase3::myFuzzTest")
 
 	// Check result without filter
-	result, err = ListJVMFuzzTests(testDirs, "")
+	result, err = ListJVMFuzzTestsByRegex(testDirs, "")
 	require.NoError(t, err)
 	assert.Len(t, result, 3)
-	assert.Contains(t, result, "com.example.FuzzTestCase1")
-	assert.Contains(t, result, "com.filter.me.FuzzTestCase2")
-	assert.Contains(t, result, "com.example.FuzzTestCase3")
+	assert.Contains(t, result, "com.example.FuzzTestCase1::myFuzzTest")
+	assert.Contains(t, result, "com.filter.me.FuzzTestCase2::myFuzzTest")
+	assert.Contains(t, result, "com.example.FuzzTestCase3::myFuzzTest")
+}
+
+func TestListJVMFuzzTestsByRegex_DoesNotExist(t *testing.T) {
+	tempDir := testutil.MkdirTemp(t, "", "bundle-*")
+
+	testDirs := []string{filepath.Join(tempDir, "src", "test")}
+	fuzzTests, err := ListJVMFuzzTestsByRegex(testDirs, "")
+	require.NoError(t, err)
+	require.Empty(t, fuzzTests)
 }
 
 func TestGetTargetMethodsFromJVMFuzzTestFileSingleMethod(t *testing.T) {

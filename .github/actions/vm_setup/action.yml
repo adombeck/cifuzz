@@ -10,7 +10,7 @@ runs:
     - name: Setup Go environment
       uses: actions/setup-go@v3
       with:
-        go-version: "1.20"
+        go-version: "1.21"
 
     - name: Cache LLVM and Clang
       id: cache-llvm
@@ -20,6 +20,24 @@ runs:
           C:/Program Files/LLVM
           ./llvm
         key: ${{ inputs.os }}-llvm-14.0
+
+    - name: Cache Gradle dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: ${{ inputs.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+        restore-keys: |
+          ${{ runner.os }}-gradle-
+
+    - name: Cache Maven dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.m2/repository
+        key: ${{ inputs.os }}-maven-${{ hashFiles('**/pom.xml') }}
+        restore-keys: |
+          ${{ runner.os }}-maven-
 
     - name: Install LLVM and Clang
       uses: KyleMayes/install-llvm-action@8852e4d5c58653ed05135c0a5d949d9c2febcb00
@@ -49,9 +67,6 @@ runs:
         # at some point we would like to remove these lines but we haven't found a way to fix this otherwise
         echo 'common --repo_env=BAZEL_CXXOPTS=-isysroot/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk' >> ~/.bazelrc
         echo 'common --repo_env=BAZEL_LINKOPTS=--sysroot=/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk:-fuse-ld=lld' >> ~/.bazelrc
-        # we ran into an error using 6.1 so we fixed it to the last working version
-        # TODO: remove this as soon as possible
-        echo "USE_BAZEL_VERSION=6.0.0" >> $GITHUB_ENV
         # install lcov which is needed for coverage report generation
         brew install lcov
       shell: bash

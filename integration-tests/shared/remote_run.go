@@ -12,26 +12,16 @@ import (
 
 	"code-intelligence.com/cifuzz/integration-tests/shared/mockserver"
 	"code-intelligence.com/cifuzz/internal/testutil"
+	"code-intelligence.com/cifuzz/pkg/log"
 	"code-intelligence.com/cifuzz/util/envutil"
 	"code-intelligence.com/cifuzz/util/executil"
 	"code-intelligence.com/cifuzz/util/fileutil"
 )
 
+var projectName = "test-project"
+
 func TestRemoteRun(t *testing.T, dir string, cifuzz string, args ...string) {
-	projectName := "test-project"
-	artifactsName := "test-artifacts-123"
-
-	server := mockserver.New(t)
-
-	// define handlers
-	server.Handlers["/v1/projects"] = mockserver.ReturnResponse(t, mockserver.ProjectsJSON)
-	server.Handlers[fmt.Sprintf("/v2/projects/%s/artifacts/import", projectName)] = mockserver.ReturnResponse(t,
-		fmt.Sprintf(`{"display-name": "test-artifacts", "resource-name": %q}`, artifactsName),
-	)
-	server.Handlers[fmt.Sprintf("/v1/%s:run", artifactsName)] = mockserver.ReturnResponse(t, `{"name": "test-campaign-run-123"}`)
-
-	// start the server
-	server.Start(t)
+	server := startMockServer(t)
 
 	tempDir := testutil.MkdirTemp(t, "", "cifuzz-archive-*")
 
@@ -56,7 +46,7 @@ func TestRemoteRun(t *testing.T, dir string, cifuzz string, args ...string) {
 			"--seed-corpus", seedCorpusDir,
 			"--timeout", "100m",
 			"--project", projectName,
-			"--server", server.Address,
+			"--server", server.AddressOnHost(),
 		}, args...)
 	cmd := executil.Command(cifuzz, args...)
 	cmd.Dir = dir
@@ -69,14 +59,33 @@ func TestRemoteRun(t *testing.T, dir string, cifuzz string, args ...string) {
 	// (else the test won't stop).
 	TerminateOnSignal(t, cmd)
 
-	t.Logf("Command: %s", cmd.String())
+	log.Printf("Command: %s", cmd.String())
 	err = cmd.Run()
 	require.NoError(t, err)
 }
 
-func TestRemoteRunWithAdditionalArgs(t *testing.T, dir string, cifuzz string, expectedErrorExp *regexp.Regexp, args ...string) {
-	var err error
-	projectName := "test-project"
+func TestRemoteRunWithAdditionalArgs(t *testing.T, cifuzzRunner *CIFuzzRunner, expectedErrorExp *regexp.Regexp, args ...string) {
+	server := startMockServer(t)
+
+	args = append([]string{
+		"--project", "test-project",
+		"--server", server.AddressOnHost(),
+		"--", "--non-existent-flag"},
+		args...)
+
+	// Run the command and expect it to fail because we passed it a non-existent flag
+	cifuzzRunner.Run(t, &RunOptions{
+		Command: []string{"remote-run"},
+		Args:    args,
+		Env:     []string{"CIFUZZ_API_TOKEN=test-token"},
+		ExpectedOutputs: []*regexp.Regexp{
+			expectedErrorExp,
+		},
+		ExpectError: true,
+	})
+}
+
+func startMockServer(t *testing.T) *mockserver.MockServer {
 	artifactsName := "test-artifacts-123"
 
 	server := mockserver.New(t)
@@ -91,26 +100,5 @@ func TestRemoteRunWithAdditionalArgs(t *testing.T, dir string, cifuzz string, ex
 	// start the server
 	server.Start(t)
 
-	args = append(
-		[]string{
-			"remote-run",
-			"--project", projectName,
-			"--server", server.Address,
-		}, args...)
-	args = append(args, "--", "--non-existent-flag")
-	cmd := executil.Command(cifuzz, args...)
-	cmd.Dir = dir
-	cmd.Env, err = envutil.Setenv(os.Environ(), "CIFUZZ_API_TOKEN", "test-token")
-	require.NoError(t, err)
-
-	// Terminate the cifuzz process when we receive a termination signal
-	// (else the test won't stop).
-	TerminateOnSignal(t, cmd)
-
-	t.Logf("Command: %s", cmd.String())
-	output, err := cmd.CombinedOutput()
-	require.Error(t, err)
-
-	seenExpectedOutput := expectedErrorExp.MatchString(string(output))
-	require.True(t, seenExpectedOutput)
+	return server
 }

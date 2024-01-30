@@ -16,9 +16,11 @@ import (
 
 	"code-intelligence.com/cifuzz/integration-tests/shared"
 	builderPkg "code-intelligence.com/cifuzz/internal/builder"
+	"code-intelligence.com/cifuzz/internal/config"
 	"code-intelligence.com/cifuzz/internal/testutil"
 	"code-intelligence.com/cifuzz/pkg/finding"
 	"code-intelligence.com/cifuzz/pkg/parser/libfuzzer/stacktrace"
+	"code-intelligence.com/cifuzz/util/envutil"
 	"code-intelligence.com/cifuzz/util/executil"
 	"code-intelligence.com/cifuzz/util/fileutil"
 	"code-intelligence.com/cifuzz/util/stringutil"
@@ -31,11 +33,13 @@ func TestMain(m *testing.M) {
 	m.Run()
 }
 
-func TestIntegration_Other_RunCoverage(t *testing.T) {
+func TestIntegration_Other(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
-	TestSkipOnWindows(t)
+	if runtime.GOOS == "windows" {
+		t.Skip("Other build systems are currently not supported on Windows")
+	}
 
 	// Install cifuzz
 	testutil.RegisterTestDepOnCIFuzz()
@@ -43,14 +47,64 @@ func TestIntegration_Other_RunCoverage(t *testing.T) {
 	cifuzz := builderPkg.CIFuzzExecutablePath(filepath.Join(installDir, "bin"))
 
 	// Setup testdata
-	dir := shared.CopyTestdataDir(t, "other")
-	t.Logf("executing other build system integration test in %s", dir)
+	testdata := shared.CopyTestdataDir(t, "other")
+	t.Logf("executing other build system integration test in %s", testdata)
 
-	cifuzzRunner := shared.CIFuzzRunner{
+	cifuzzRunner := &shared.CIFuzzRunner{
 		CIFuzzPath:      cifuzz,
-		DefaultWorkDir:  dir,
+		DefaultWorkDir:  testdata,
 		DefaultFuzzTest: "my_fuzz_test",
 	}
+
+	t.Run("runBuildOnly", func(t *testing.T) {
+		cifuzzRunner.Run(t, &shared.RunOptions{
+			Args: []string{"--build-only"},
+			Env:  cifuzzEnv(testdata),
+		})
+	})
+
+	t.Run("run", func(t *testing.T) {
+		testRun(t, cifuzzRunner)
+
+		t.Run("htmlReport", func(t *testing.T) {
+			// Produce a coverage report for my_fuzz_test
+			testHTMLCoverageReport(t, cifuzz, testdata)
+		})
+
+		t.Run("lcovReport", func(t *testing.T) {
+			// Produce a coverage report for my_fuzz_test
+			testLcovCoverageReport(t, cifuzz, testdata)
+		})
+	})
+
+	t.Run("runWithDefaultDict", func(t *testing.T) {
+		testRunWithDefaultDict(t, cifuzzRunner)
+	})
+
+	t.Run("bundle", func(t *testing.T) {
+		if runtime.GOOS != "linux" {
+			t.Skip("Creating a bundle for other build systems is currently only supported on Linux")
+		}
+
+		// Use a different Makefile on macOS, because shared objects need
+		// to be built differently there
+		args := []string{"my_fuzz_test", "--build-command", buildCommand()}
+
+		// Run cifuzz bundle and verify the contents of the archive.
+		shared.TestBundleLibFuzzer(t, testdata, cifuzz, cifuzzEnv(testdata), args...)
+	})
+
+	t.Run("containerRun", func(t *testing.T) {
+		if runtime.GOOS != "linux" && !config.AllowUnsupportedPlatforms() {
+			t.Skip("Creating a bundle for other build systems (which is required by the container run command) is currently only supported on Linux")
+		}
+		testContainerRun(t, cifuzzRunner)
+	})
+}
+
+func testRun(t *testing.T, cifuzzRunner *shared.CIFuzzRunner) {
+	cifuzz := cifuzzRunner.CIFuzzPath
+	testdata := cifuzzRunner.DefaultWorkDir
 
 	expectedOutputs := []*regexp.Regexp{
 		regexp.MustCompile(`^==\d*==ERROR: AddressSanitizer: heap-buffer-overflow`),
@@ -64,12 +118,12 @@ func TestIntegration_Other_RunCoverage(t *testing.T) {
 
 	cifuzzRunner.Run(t, &shared.RunOptions{
 		ExpectedOutputs: expectedOutputs,
-		Env:             cifuzzEnv(dir),
+		Env:             cifuzzEnv(testdata),
 		Args:            []string{"--build-command", buildCommand()},
 	})
 
 	// Check that the findings command lists the findings
-	findings := shared.GetFindings(t, cifuzz, dir)
+	findings := shared.GetFindings(t, cifuzz, testdata)
 	require.Len(t, findings, 2)
 	var asanFinding *finding.Finding
 	var ubsanFinding *finding.Finding
@@ -88,7 +142,7 @@ func TestIntegration_Other_RunCoverage(t *testing.T) {
 	// Verify that ASan findings come with inputs under the project directory.
 	require.NotEmpty(t, asanFinding.InputFile)
 	require.False(t, filepath.IsAbs(asanFinding.InputFile), "Should be relative: %s", asanFinding.InputFile)
-	require.FileExists(t, filepath.Join(dir, asanFinding.InputFile))
+	require.FileExists(t, filepath.Join(testdata, asanFinding.InputFile))
 	// TODO: This check currently fails on macOS because there
 	// llvm-symbolizer doesn't read debug info from object files.
 	// See https://github.com/google/sanitizers/issues/207#issuecomment-136495556
@@ -125,7 +179,7 @@ func TestIntegration_Other_RunCoverage(t *testing.T) {
 	// Verify that UBSan findings come with inputs under the project directory.
 	require.NotEmpty(t, ubsanFinding.InputFile)
 	require.False(t, filepath.IsAbs(ubsanFinding.InputFile), "Should be relative: %s", ubsanFinding.InputFile)
-	require.FileExists(t, filepath.Join(dir, ubsanFinding.InputFile))
+	require.FileExists(t, filepath.Join(testdata, ubsanFinding.InputFile))
 	if runtime.GOOS != "darwin" {
 		expectedStackTrace := []*stacktrace.StackFrame{
 			{
@@ -152,71 +206,29 @@ func TestIntegration_Other_RunCoverage(t *testing.T) {
 		}
 		require.Equal(t, expectedStackTrace, ubsanFinding.StackTrace)
 	}
-
-	// Test the coverage command
-	createHTMLCoverageReport(t, cifuzz, dir, cifuzzEnv(dir), "my_fuzz_test")
 }
 
-func TestIntegration_Other_DetailedCoverage(t *testing.T) {
-	if testing.Short() {
-		t.Skip()
-	}
-	TestSkipOnWindows(t)
-
-	// Install cifuzz
-	testutil.RegisterTestDepOnCIFuzz()
-
-	installDir = shared.InstallCIFuzzInTemp(t)
-	cifuzz := builderPkg.CIFuzzExecutablePath(filepath.Join(installDir, "bin"))
-
-	// Setup testdata
-	dir := shared.CopyTestdataDir(t, "other")
-	t.Logf("executing other build system coverage test in %s", dir)
-
-	createAndVerifyLcovCoverageReport(t, cifuzz, dir, "crashing_fuzz_test")
-}
-
-func TestIntegration_Other_Bundle(t *testing.T) {
-	if testing.Short() {
-		t.Skip()
-	}
-	if runtime.GOOS != "linux" {
-		t.Skip("Creating a bundle for other build systems is currently only supported on Linux")
-	}
-	// Install cifuzz
-	testutil.RegisterTestDepOnCIFuzz()
-	installDir = shared.InstallCIFuzzInTemp(t)
-	cifuzz := builderPkg.CIFuzzExecutablePath(filepath.Join(installDir, "bin"))
-
-	// Setup testdata
-	dir := shared.CopyTestdataDir(t, "other")
-	t.Logf("executing other build system integration test in %s", dir)
-
-	// Use a different Makefile on macOS, because shared objects need
-	// to be built differently there
-	args := []string{"my_fuzz_test", "--build-command", buildCommand()}
-
-	// Execute the bundle command
-	shared.TestBundleLibFuzzer(t, dir, cifuzz, cifuzzEnv(dir), args...)
-}
-
-func createHTMLCoverageReport(t *testing.T, cifuzz string, dir string, cifuzzEnv []string, fuzzTest string) {
+func testHTMLCoverageReport(t *testing.T, cifuzz string, dir string) {
 	t.Helper()
+	var err error
+
+	fuzzTest := "my_fuzz_test"
 
 	cmd := executil.Command(cifuzz, "coverage", "-v",
-		"--output", fuzzTest+"-coverage",
+		"--output", "coverage-report",
 		"--build-command", buildCommand(),
 		fuzzTest)
 	cmd.Dir = dir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.Env = cifuzzEnv
+	cmd.Env, err = envutil.Copy(os.Environ(), cifuzzEnv(dir))
+	require.NoError(t, err)
 	t.Logf("Command: %s", strings.Join(stringutil.QuotedStrings(cmd.Args), " "))
-	err := cmd.Run()
+	err = cmd.Run()
 	require.NoError(t, err)
 
 	// Check that the coverage report was created
-	reportPath := filepath.Join(dir, fuzzTest+"-coverage", "explore", "index.html")
+	reportPath := filepath.Join(dir, "coverage-report", "explore", "index.html")
 	require.FileExists(t, reportPath)
 
 	// Check that the coverage report contains coverage for the api.cpp
@@ -228,9 +240,11 @@ func createHTMLCoverageReport(t *testing.T, cifuzz string, dir string, cifuzzEnv
 	require.NotContains(t, report, "include/cifuzz")
 }
 
-func createAndVerifyLcovCoverageReport(t *testing.T, cifuzz string, dir string, fuzzTest string) {
+func testLcovCoverageReport(t *testing.T, cifuzz string, dir string) {
 	t.Helper()
+	var err error
 
+	fuzzTest := "crashing_fuzz_test"
 	reportPath := filepath.Join(dir, fuzzTest+".lcov")
 
 	cmd := executil.Command(cifuzz, "coverage", "-v",
@@ -241,8 +255,9 @@ func createAndVerifyLcovCoverageReport(t *testing.T, cifuzz string, dir string, 
 	cmd.Dir = dir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.Env = cifuzzEnv(dir)
-	err := cmd.Run()
+	cmd.Env, err = envutil.Copy(os.Environ(), cifuzzEnv(dir))
+	require.NoError(t, err)
+	err = cmd.Run()
 	require.NoError(t, err)
 
 	// Check that the coverage report was created
@@ -286,11 +301,34 @@ func createAndVerifyLcovCoverageReport(t *testing.T, cifuzz string, dir string, 
 		uncoveredLines)
 }
 
+func testRunWithDefaultDict(t *testing.T, cifuzzRunner *shared.CIFuzzRunner) {
+	cifuzzRunner.Run(t, &shared.RunOptions{
+		ExpectedOutputs: []*regexp.Regexp{
+			regexp.MustCompile(`Dictionary: 1 entries`),
+		},
+		Env:  cifuzzEnv(cifuzzRunner.DefaultWorkDir),
+		Args: []string{"--build-command", buildCommand()},
+	})
+}
+
+func testContainerRun(t *testing.T, cifuzzRunner *shared.CIFuzzRunner) {
+	tag := "cifuzz-test-container-run-other:latest"
+
+	shared.BuildDockerImage(t, tag, cifuzzRunner.DefaultWorkDir)
+	shared.TestContainerRun(t, cifuzzRunner, tag, &shared.RunOptions{
+		Env: cifuzzEnv(cifuzzRunner.DefaultWorkDir),
+		ExpectedOutputs: []*regexp.Regexp{
+			regexp.MustCompile(`^==\d*==ERROR: AddressSanitizer: heap-buffer-overflow`),
+			regexp.MustCompile(`^SUMMARY: UndefinedBehaviorSanitizer: undefined-behavior`),
+		},
+	})
+}
+
 func cifuzzEnv(workDir string) []string {
 	if runtime.GOOS == "linux" {
-		return append(os.Environ(), "LD_LIBRARY_PATH="+filepath.Join(workDir, "build"))
+		return []string{"LD_LIBRARY_PATH=" + filepath.Join(workDir, "build")}
 	} else if runtime.GOOS == "darwin" {
-		return append(os.Environ(), "DYLD_LIBRARY_PATH="+workDir)
+		return []string{"DYLD_LIBRARY_PATH=" + workDir}
 	}
 	return nil
 }
@@ -300,10 +338,4 @@ func buildCommand() string {
 		return "make -f Makefile.darwin clean && make -f Makefile.darwin $FUZZ_TEST"
 	}
 	return "make clean && make $FUZZ_TEST"
-}
-
-func TestSkipOnWindows(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Other build systems are currently not supported on Windows")
-	}
 }

@@ -1,0 +1,55 @@
+{
+	"findings": [
+		{
+			"name": "projects/my-project/findings/pensive_flamingo",
+			"display_name": "pensive_flamingo",
+			"fuzz_target": "projects/my-project/fuzz_targets/bXlfZnV6el90ZXN0",
+			"fuzzing_run": "projects/my-project/fuzzing_runs/my-fuzzing-run",
+			"error_report": {
+				"type": "RUNTIME_ERROR",
+				"debugging_info": {
+					"break_points": [
+						{
+							"source_file_path": "src/explore_me.cpp",
+							"location": {
+								"line": 13,
+								"column": 11
+							},
+							"function": "exploreMe"
+						},
+						{
+							"source_file_path": "my_fuzz_test.cpp",
+							"location": {
+								"line": 18,
+								"column": 3
+							},
+							"function": "LLVMFuzzerTestOneInputNoReturn"
+						}
+					]
+				},
+				"details": "test_details",
+				"more_details": {
+					"id": "undefined behavior",
+					"name": "Undefined Behavior",
+					"description": "An operation has been detected which is undefined by the C/C++ standard. The result will be compiler dependent and is often unpredictable.",
+					"severity": {
+						"description": "Low",
+						"score": 2
+					},
+					"mitigation": "Avoid all operations that cause undefined behavior as per the C/C++ standard.",
+					"links": [
+						{
+							"description": "Undefined Behavior Sanitizer",
+							"url": "https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html#available-checks"
+						}
+					]
+				},
+				"web_app_finding_details": {},
+				"short_description": "undefined behavior in exploreMe (src/explore_me.cpp:13:11)"
+			},
+			"timestamp": "0001-01-01T00:00:00Z",
+			"campaign_run": "projects/my-project/campaign_runs/my-campaign-run",
+			"fuzz_target_display_name": "my_fuzz_test"
+		}
+	]
+}

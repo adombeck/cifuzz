@@ -46,5 +46,5 @@ func NonSystemSharedLibraries(executable string) ([]string, error) {
 		}
 		return nil
 	})
-	return sharedObjects, err
+	return sharedObjects, errors.WithMessage(err, "Failed to gather non system shared libraries")
 }

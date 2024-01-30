@@ -15,16 +15,16 @@ import (
 
 	"code-intelligence.com/cifuzz/integration-tests/shared"
 	builderPkg "code-intelligence.com/cifuzz/internal/builder"
-	"code-intelligence.com/cifuzz/internal/cmd/coverage/summary"
 	"code-intelligence.com/cifuzz/internal/testutil"
+	"code-intelligence.com/cifuzz/pkg/parser/coverage"
 	"code-intelligence.com/cifuzz/pkg/parser/libfuzzer/stacktrace"
 	"code-intelligence.com/cifuzz/util/executil"
 	"code-intelligence.com/cifuzz/util/fileutil"
 )
 
 func TestIntegration_NodeTS_InitCreateRunCoverage(t *testing.T) {
-	if testing.Short() || os.Getenv("CIFUZZ_PRERELEASE") == "" {
-		t.Skip()
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
 	}
 
 	testutil.RegisterTestDepOnCIFuzz()
@@ -44,7 +44,6 @@ func TestIntegration_NodeTS_InitCreateRunCoverage(t *testing.T) {
 
 	// Execute the init command
 	instructions := cifuzzRunner.CommandWithFilterForInstructions(t, "init", &shared.CommandOptions{
-		Env:  append(os.Environ(), "CIFUZZ_PRERELEASE=1"),
 		Args: []string{"ts"},
 	})
 	require.FileExists(t, filepath.Join(projectDir, "cifuzz.yaml"))
@@ -71,7 +70,6 @@ func TestIntegration_NodeTS_InitCreateRunCoverage(t *testing.T) {
 	// Execute the create command
 	fuzzTestPath := filepath.Join(projectDir, "FuzzTestCase.fuzz.ts")
 	cifuzzRunner.CommandWithFilterForInstructions(t, "create", &shared.CommandOptions{
-		Env:  append(os.Environ(), "CIFUZZ_PRERELEASE=1"),
 		Args: []string{"ts", "--output", fuzzTestPath},
 	},
 	)
@@ -102,6 +100,9 @@ func TestIntegration_NodeTS_InitCreateRunCoverage(t *testing.T) {
 	t.Run("lcovReport", func(t *testing.T) {
 		// Produces a coverage report for crashing_fuzz_test
 		testLcovCoverageReport(t, cifuzz, projectDir, "FuzzTestCase")
+	})
+	t.Run("runWithUpload", func(t *testing.T) {
+		testRunWithUpload(t, &cifuzzRunner)
 	})
 }
 
@@ -183,7 +184,7 @@ func testRun(t *testing.T, cifuzzRunner *shared.CIFuzzRunner) {
 	// Check that the findings command lists the finding
 	findings := shared.GetFindings(t, cifuzzRunner.CIFuzzPath, cifuzzRunner.DefaultWorkDir)
 	require.Len(t, findings, 1)
-	assert.Contains(t, findings[0].Details, "Crash!")
+	assert.Contains(t, findings[0].Details, "Crash")
 
 	expectedStackTrace := []*stacktrace.StackFrame{
 		{
@@ -193,12 +194,19 @@ func testRun(t *testing.T, cifuzzRunner *shared.CIFuzzRunner) {
 			FrameNumber: 0,
 			Function:    "exploreMe",
 		},
+		{
+			SourceFile:  "FuzzTestCase.fuzz.ts",
+			Line:        19,
+			Column:      12,
+			FrameNumber: 0,
+			Function:    "",
+		},
 	}
 	assert.Equal(t, expectedStackTrace, findings[0].StackTrace)
 
 	// Check that options set via the config file are respected
 	configFileContent := "print-json: true"
-	err := os.WriteFile(filepath.Join(cifuzzRunner.DefaultWorkDir, "cifuzz.yaml"), []byte(configFileContent), 0644)
+	err := os.WriteFile(filepath.Join(cifuzzRunner.DefaultWorkDir, "cifuzz.yaml"), []byte(configFileContent), 0o644)
 	require.NoError(t, err)
 	expectedOutputExp = regexp.MustCompile(`"finding": {`)
 	cifuzzRunner.Run(t, &shared.RunOptions{
@@ -212,7 +220,7 @@ func testRun(t *testing.T, cifuzzRunner *shared.CIFuzzRunner) {
 	})
 
 	// Clear cifuzz.yml so that subsequent tests run with defaults (e.g. sandboxing).
-	err = os.WriteFile(filepath.Join(cifuzzRunner.DefaultWorkDir, "cifuzz.yaml"), nil, 0644)
+	err = os.WriteFile(filepath.Join(cifuzzRunner.DefaultWorkDir, "cifuzz.yaml"), nil, 0o644)
 	require.NoError(t, err)
 }
 
@@ -266,17 +274,28 @@ func testLcovCoverageReport(t *testing.T, cifuzz, dir, fuzzTest string) {
 	reportFile, err := os.Open(reportPath)
 	require.NoError(t, err)
 	defer reportFile.Close()
-	summary := summary.ParseLcov(reportFile)
+	summary, err := coverage.ParseLCOVReportIntoSummary(reportFile)
+	require.NoError(t, err)
 	assert.Equal(t, 2, len(summary.Files))
 	for _, file := range summary.Files {
 		if file.Filename == "ExploreMe.ts" {
 			assert.Equal(t, 1, file.Coverage.FunctionsHit)
 			assert.Equal(t, 6, file.Coverage.LinesHit)
-			assert.Equal(t, 4, file.Coverage.BranchesHit)
+			// How many of the 4 branches that don't lead to a crash are hit
+			// depends on how lucky the fuzzer is, so we just check that
+			// it's between 4 and 8.
+			assert.GreaterOrEqual(t, file.Coverage.BranchesHit, 4)
+			assert.LessOrEqual(t, file.Coverage.BranchesHit, 8)
 		} else if file.Filename == "FuzzTestCase.fuzz.ts" {
 			assert.Equal(t, 1, file.Coverage.FunctionsHit)
 			assert.Equal(t, 8, file.Coverage.LinesHit)
 			assert.Equal(t, 0, file.Coverage.BranchesHit)
 		}
 	}
+}
+
+func testRunWithUpload(t *testing.T, cifuzzRunner *shared.CIFuzzRunner) {
+	cifuzz := cifuzzRunner.CIFuzzPath
+	testdir := cifuzzRunner.DefaultWorkDir
+	shared.TestRunWithUpload(t, testdir, cifuzz, "FuzzTestCase")
 }

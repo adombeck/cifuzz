@@ -1,0 +1,45 @@
+name: E2E testing
+
+on:
+  merge_group:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: E2E / Behavior tests
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        # E2E pipeline works on macOS, but Docker Engine on macOS only runs Linux containers. Thus it's testing the same thing as Linux pipeline
+        os: [ubuntu-22.04, windows-2022]
+      fail-fast: false # We care about results from other pipelines
+
+    steps:
+      # Docker Engine on Windows is installed and available, but needs to be exported for the SDK
+      - if: contains(matrix.os, 'windows')
+        run: echo "DOCKER_HOST=npipe:////./pipe/setup_docker_actionyellow" >> $GITHUB_ENV
+
+      - uses: actions/checkout@v3
+
+      - name: Setup VM for cifuzz
+        uses: ./.github/actions/vm_setup
+        with:
+          os: ${{ matrix.os }}
+
+      - name: Run E2E tests matrix
+        run: make test/e2e
+
+      # Upload the original go test log as an artifact for later review.
+      - name: Upload test log
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: test-log-${{ matrix.os }}
+          path: gotest.log
+          if-no-files-found: error

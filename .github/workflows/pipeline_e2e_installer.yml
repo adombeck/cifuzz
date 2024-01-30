@@ -4,9 +4,15 @@
 name: E2E Installer Installation/Example Test
 
 on:
-  release:
-    types: [published]
+  workflow_run:
+    workflows: ["Release Pipeline"]
+    types:
+      - completed
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test-installer:
@@ -41,8 +47,8 @@ jobs:
         if: contains(matrix.os, 'macos')
         # please make sure this is in sync with the README.md / installation docs
         run: |
-          brew install llvm@11 
-          LLVM_PATH=$(brew --prefix llvm@11)
+          brew install llvm@12
+          LLVM_PATH=$(brew --prefix llvm@12)
           echo "CC=$LLVM_PATH/bin/clang" >> $GITHUB_ENV
           echo "CXX=$LLVM_PATH/bin/clang++" >> $GITHUB_ENV
           echo "PATH=$PATH:$LLVM_PATH/bin" >> $GITHUB_ENV

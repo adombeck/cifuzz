@@ -15,6 +15,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"code-intelligence.com/cifuzz/internal/cmdutils"
+	"code-intelligence.com/cifuzz/pkg/java/sourcemap"
 	"code-intelligence.com/cifuzz/pkg/log"
 	"code-intelligence.com/cifuzz/pkg/minijail"
 	"code-intelligence.com/cifuzz/pkg/options"
@@ -47,12 +48,19 @@ type RunnerOptions struct {
 	LibraryDirs        []string
 	LogOutput          io.Writer
 	ProjectDir         string
+	SourceMap          *sourcemap.SourceMap
 	ReadOnlyBindings   []string
 	ReportHandler      report.Handler
 	SeedCorpusDirs     []string
 	Timeout            time.Duration
 	UseMinijail        bool
 	Verbose            bool
+	// The path to the coverage binary to use to produce a coverage
+	// report after the fuzzer has finished. If empty, no coverage
+	// report is produced.
+	CoverageBinary      string
+	CoverageLibraryDirs []string
+	CoverageOutputPath  string
 }
 
 func (options *RunnerOptions) ValidateOptions() error {
@@ -261,6 +269,7 @@ func (r *Runner) RunLibfuzzerAndReport(ctx context.Context, args []string, env [
 		KeepColor:           r.KeepColor,
 		StartupOutputWriter: startupOutputWriter,
 		ProjectDir:          r.ProjectDir,
+		SourceMap:           r.SourceMap,
 	})
 	reportsCh := make(chan *report.Report, MaxBufferedReports)
 
@@ -353,7 +362,10 @@ func (r *Runner) RunLibfuzzerAndReport(ctx context.Context, args []string, env [
 		}
 	})
 
-	return errors.WithStack(routines.Wait())
+	// Routines.Wait() returns an error created by us so it already has a
+	// stack trace and we don't want to add another one here
+	// nolint: wrapcheck
+	return routines.Wait()
 }
 
 func (r *Runner) FuzzerEnvironment() ([]string, error) {

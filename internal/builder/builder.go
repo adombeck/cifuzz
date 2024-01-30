@@ -11,8 +11,10 @@ import (
 	"github.com/alexflint/go-filemutex"
 	"github.com/otiai10/copy"
 	"github.com/pkg/errors"
+	"golang.org/x/term"
 
 	"code-intelligence.com/cifuzz/pkg/log"
+	"code-intelligence.com/cifuzz/pkg/runfiles"
 	"code-intelligence.com/cifuzz/util/envutil"
 	"code-intelligence.com/cifuzz/util/fileutil"
 )
@@ -192,6 +194,16 @@ func (i *CIFuzzBuilder) BuildCIFuzzAndDeps() error {
 		}
 	}
 
+	err = i.BuildDumper()
+	if err != nil {
+		return err
+	}
+
+	err = i.BuildListFuzzTestsTool()
+	if err != nil {
+		return err
+	}
+
 	err = i.BuildCIFuzz()
 	if err != nil {
 		return err
@@ -277,6 +289,94 @@ func (i *CIFuzzBuilder) BuildProcessWrapper() error {
 	cmd.Stdout = os.Stdout
 	log.Printf("Command: %s", cmd.String())
 	err = cmd.Run()
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	return nil
+}
+
+func (i *CIFuzzBuilder) BuildDumper() error {
+	var err error
+	err = i.Lock()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		err = i.Unlock()
+		if err != nil {
+			log.Printf("error: %v", err)
+		}
+	}()
+
+	// Build dumper
+	compiler := envutil.GetEnvWithPathSubstring(os.Environ(), "CC", "clang")
+	if compiler == "" {
+		compiler, err = exec.LookPath("clang")
+		if err != nil {
+			return errors.WithStack(err)
+		}
+	}
+
+	dest := filepath.Join(i.libDir(), "dumper.o")
+	args := []string{"-c", "-o", dest, "dumper.c"}
+	if runtime.GOOS != "windows" {
+		args = append(args, "-fPIC")
+	}
+
+	cmd := exec.Command(compiler, args...)
+	cmd.Dir = filepath.Join(i.projectDir, "tools", "dumper")
+	cmd.Stderr = os.Stderr
+	cmd.Stdout = os.Stdout
+	log.Printf("Command: %s", cmd.String())
+	err = cmd.Run()
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	return nil
+}
+
+func (i *CIFuzzBuilder) BuildListFuzzTestsTool() error {
+	var err error
+	err = i.Lock()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		err = i.Unlock()
+		if err != nil {
+			log.Printf("error: %v", err)
+		}
+	}()
+
+	listFuzzTestsDir := filepath.Join(i.projectDir, "tools", "list-fuzz-tests")
+
+	mvn, err := runfiles.Finder.MavenPath()
+	if err != nil {
+		return err
+	}
+
+	args := []string{mvn, "package"}
+	// Hide the progress output from Maven if stdout is not a terminal
+	if !term.IsTerminal(int(os.Stdout.Fd())) {
+		args = append(args, "--batch-mode")
+	}
+
+	cmd := exec.Command(args[0], args[1:]...)
+	cmd.Dir = listFuzzTestsDir
+	cmd.Stderr = os.Stderr
+	cmd.Stdout = os.Stdout
+	log.Printf("Command: %s", cmd.String())
+	err = cmd.Run()
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	err = copy.Copy(
+		filepath.Join(listFuzzTestsDir, "target", "list-fuzz-tests.jar"),
+		filepath.Join(i.shareDir(), "java", "list-fuzz-tests.jar"),
+	)
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -392,7 +492,7 @@ func FindProjectDir() (string, error) {
 	}
 	exists, err := fileutil.Exists(filepath.Join(projectDir, "go.mod"))
 	if err != nil {
-		return "", errors.WithStack(err)
+		return "", err
 	}
 	for !exists {
 		if filepath.Dir(projectDir) == projectDir {
@@ -401,7 +501,7 @@ func FindProjectDir() (string, error) {
 		projectDir = filepath.Dir(projectDir)
 		exists, err = fileutil.Exists(filepath.Join(projectDir, "go.mod"))
 		if err != nil {
-			return "", errors.WithStack(err)
+			return "", err
 		}
 	}
 	return projectDir, nil
