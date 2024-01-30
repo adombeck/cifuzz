@@ -6,7 +6,7 @@ require (
 	atomicgo.dev/keyboard v0.2.9
 	github.com/Masterminds/semver v1.5.0
 	github.com/alessio/shellescape v1.4.2
-	github.com/alexflint/go-filemutex v1.2.0
+	github.com/alexflint/go-filemutex v1.3.0
 	github.com/docker/cli v24.0.7+incompatible
 	github.com/docker/docker v24.0.7+incompatible
 	github.com/gen2brain/beeep v0.0.0-20230602101333-f384c29b62dd
@@ -86,7 +86,7 @@ require (
 	github.com/stretchr/testify v1.8.4
 	github.com/subosito/gotenv v1.6.0 // indirect
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9
-	golang.org/x/sys v0.14.0
+	golang.org/x/sys v0.16.0
 	golang.org/x/text v0.14.0
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1
