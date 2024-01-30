@@ -10,6 +10,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 
 	"code-intelligence.com/cifuzz/internal/installer"
@@ -29,10 +30,10 @@ func RegisterTestDeps(path ...string) {
 	for _, p := range path {
 		err := filepath.Walk(p, func(path string, info fs.FileInfo, err error) error {
 			if err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 			_, err = os.Stat(path)
-			return err
+			return errors.WithStack(err)
 		})
 		if err != nil {
 			panic(err)
@@ -57,7 +58,7 @@ func RegisterTestDepOnCIFuzz() {
 }
 
 // ChdirToTempDir creates and changes the working directory to new tmp dir
-func ChdirToTempDir(prefix string) (tempDir string, cleanup func()) { //nolint:nonamedreturns
+func ChdirToTempDir(t *testing.T, prefix string) string {
 	ChdirMutex.Lock()
 	oldWd, err := os.Getwd()
 	if err != nil {
@@ -78,7 +79,7 @@ func ChdirToTempDir(prefix string) (tempDir string, cleanup func()) { //nolint:n
 		os.Exit(1)
 	}
 
-	cleanup = func() {
+	t.Cleanup(func() {
 		err = os.Chdir(oldWd)
 		if err != nil {
 			log.Printf("Failed to change working directory back to %s: %+v", oldWd, err)
@@ -86,9 +87,9 @@ func ChdirToTempDir(prefix string) (tempDir string, cleanup func()) { //nolint:n
 		}
 		ChdirMutex.Unlock()
 		fileutil.Cleanup(testTempDir)
-	}
+	})
 
-	return testTempDir, cleanup
+	return testTempDir
 }
 
 // CheckOutput checks that the strings are contained in the reader output
@@ -120,12 +121,12 @@ func RepoRoot(t *testing.T) string {
 
 // SetupCoverage creates a directory for coverage data and sets the
 // needed environment variable
-func SetupCoverage(t *testing.T, env []string, subdir string) []string {
+func SetupCoverage(t *testing.T, env []string, subdir string) (string, []string) {
 	t.Helper()
 	covDir := filepath.Join(RepoRoot(t), "coverage", subdir)
 	err := os.MkdirAll(covDir, 0755)
 	require.NoError(t, err)
 	env, err = envutil.Setenv(env, "GOCOVERDIR", covDir)
 	require.NoError(t, err)
-	return env
+	return covDir, env
 }

@@ -6,7 +6,8 @@ const goFileFilter = fileName =>
 	!fileName.includes("_test.go") &&
 	!fileName.includes("testutil") &&
 	!fileName.startsWith("integration-tests") &&
-	!fileName.startsWith("e2e-tests");
+	!fileName.startsWith("e2e") &&
+	!fileName.startsWith(".golangci.yaml");
 const testFileFilter = fileName => fileName.includes("_test.go");
 
 const createdGoFiles = danger.git.created_files.filter(goFileFilter);
@@ -77,8 +78,7 @@ function missingTestsForModifiedFiles() {
 			const filePath = dirname(x);
 			const testFile = basename(x).replace(".go", "_test.go");
 			return (
-				!modifiedTestFiles.includes(`${filePath}/${testFile}`) &&
-				!createdTestFiles.includes(`${filePath}/${testFile}`)
+				!modifiedTestFiles.includes(`${filePath}/${testFile}`) && !createdTestFiles.includes(`${filePath}/${testFile}`)
 			);
 		});
 

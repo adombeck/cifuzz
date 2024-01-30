@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
 
 	"github.com/Masterminds/semver"
 	"github.com/pkg/errors"
 
-	"code-intelligence.com/cifuzz/internal/build/gradle"
+	"code-intelligence.com/cifuzz/internal/build/java/gradle"
+	"code-intelligence.com/cifuzz/internal/cmdutils"
 	"code-intelligence.com/cifuzz/pkg/log"
 	"code-intelligence.com/cifuzz/pkg/runfiles"
 	"code-intelligence.com/cifuzz/util/envutil"
@@ -31,6 +31,9 @@ var (
 
 	bazelRegex   = regexp.MustCompile(`(?m)bazel (?P<version>\d+(\.\d+\.\d+)?)`)
 	genHTMLRegex = regexp.MustCompile(`.*LCOV version (?P<version>\d+\.\d+(\.\d+)?)`)
+
+	jazzerRegex = regexp.MustCompile(`jazzer-(?P<version>\d+\.\d+\.\d+).jar`)
+	junitRegex  = regexp.MustCompile(`junit-jupiter-engine-(?P<version>\d+\.\d+\.\d+).jar`)
 )
 
 type execCheck func(string, Key) (*semver.Version, error)
@@ -38,7 +41,7 @@ type execCheck func(string, Key) (*semver.Version, error)
 func bazelVersion(dep *Dependency, projectDir string) (*semver.Version, error) {
 	path, err := exec.LookPath("bazel")
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	version, err := getVersionFromCommand(path, []string{"--version"}, bazelRegex, dep.Key)
@@ -78,7 +81,7 @@ func clangVersion(dep *Dependency, clangCheck execCheck) (*semver.Version, error
 	} else {
 		clang, err := exec.LookPath("clang")
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 		log.Warn("No clang found in CC, now using ", clang)
 	}
@@ -100,7 +103,7 @@ Other llvm tools like llvm-cov are selected based on the smaller version.`)
 	} else {
 		clangPP, err := exec.LookPath("clang++")
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 		log.Warn("No clang++ found in CC, now using ", clangPP)
 	}
@@ -143,7 +146,7 @@ func genHTMLVersion(path string, dep *Dependency) (*semver.Version, error) {
 func cmakeVersion(dep *Dependency, projectDir string) (*semver.Version, error) {
 	path, err := exec.LookPath("cmake")
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	version, err := getVersionFromCommand(path, []string{"--version"}, cmakeRegex, dep.Key)
@@ -155,17 +158,16 @@ func cmakeVersion(dep *Dependency, projectDir string) (*semver.Version, error) {
 }
 
 func javaVersion(dep *Dependency, projectDir string) (*semver.Version, error) {
-	javaHome, err := runfiles.Finder.JavaHomePath()
+	javaBin, err := runfiles.Finder.JavaPath()
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return nil, err
 	}
-	javaBin := filepath.Join(javaHome, "bin", "java")
 
 	version, err := getVersionFromCommand(javaBin, []string{"-version"}, javaRegex, dep.Key)
 	if err != nil {
 		return nil, err
 	}
-	log.Debugf("Found Java version %s in PATH: %s", version, javaHome)
+	log.Debugf("Found Java version %s in PATH: %s", version, javaBin)
 	return version, nil
 }
 
@@ -181,6 +183,36 @@ func gradleVersion(dep *Dependency, projectDir string) (*semver.Version, error) 
 	}
 	log.Debugf("Found Gradle version %s: %s", version, path)
 	return version, nil
+}
+
+func JazzerVersion(classPath string) (*semver.Version, error) {
+	return extractVersion(classPath, jazzerRegex, "jazzer")
+}
+
+func JUnitVersion(classPath string) (*semver.Version, error) {
+	return extractVersion(classPath, junitRegex, "junit-jupiter-engine")
+}
+
+func JavaVersion(javaBin string) (*semver.Version, error) {
+	return getVersionFromCommand(javaBin, []string{"-version"}, javaRegex, Java)
+}
+
+func JazzerJSVersion() (*semver.Version, error) {
+	cmd := exec.Command("npx", []string{"jazzer", "--version"}...)
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, cmdutils.WrapExecError(errors.WithStack(err), cmd)
+	}
+	return extractVersion(string(output), nodeRegex, "jazzer.js")
+}
+
+func JestVersion() (*semver.Version, error) {
+	cmd := exec.Command("npx", []string{"jest", "--version"}...)
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, cmdutils.WrapExecError(errors.WithStack(err), cmd)
+	}
+	return extractVersion(string(output), nodeRegex, "jest")
 }
 
 func nodeVersion(dep *Dependency, projectDir string) (*semver.Version, error) {

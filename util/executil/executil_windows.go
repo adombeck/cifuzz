@@ -17,7 +17,9 @@ import (
 // exit code 1.
 func IsTerminatedExitErr(err error) bool {
 	var exitErr *exec.ExitError
-	errors.As(err, &exitErr)
+	if !errors.As(err, &exitErr) {
+		return false
+	}
 	return exitErr.Sys().(syscall.WaitStatus).ExitCode == 1
 }
 

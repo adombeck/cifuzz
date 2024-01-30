@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"code-intelligence.com/cifuzz/pkg/finding"
+	"code-intelligence.com/cifuzz/pkg/java/sourcemap"
 	"code-intelligence.com/cifuzz/pkg/parser/libfuzzer/stacktrace"
 	"code-intelligence.com/cifuzz/pkg/report"
 	"code-intelligence.com/cifuzz/util/fileutil"
@@ -50,9 +51,12 @@ func TestLibFuzzerAdapter_ReportsParsing(t *testing.T) {
 	projectDir := filepath.Join("path", "to", "test-project")
 
 	tests := []struct {
-		name     string
-		logs     string
-		expected []*report.Report
+		name            string
+		supportJazzer   bool
+		supportJazzerJS bool
+		logs            string
+		sourceMap       *sourcemap.SourceMap
+		expected        []*report.Report
 	}{
 		{
 			name:     "empty logs",
@@ -371,7 +375,8 @@ error info 2`,
 			},
 		},
 		{
-			name: "java libfuzzer driver crash",
+			name:          "java libfuzzer driver crash",
+			supportJazzer: true,
 			logs: `
 INFO: A corpus is not provided, starting from an empty corpus
 == Java Exception: java.lang.ArrayIndexOutOfBoundsException: Index 22 out of bounds for length 8
@@ -385,6 +390,11 @@ MS: 0 ; base unit: 0000000000000000000000000000000000000000
 deadbeef
 ` + fmt.Sprintf("artifact_prefix='./'; Test unit written to %s", testInputFile.Name()) + `
 Base64: ZGVhZGJlZWY=`,
+			sourceMap: &sourcemap.SourceMap{
+				JavaPackages: map[string][]string{
+					"com.example.parser": {"src/main/java/com/example/parser/Parser.java"},
+				},
+			},
 			expected: []*report.Report{
 				{Status: report.RunStatusInitializing},
 				{
@@ -408,18 +418,28 @@ Base64: ZGVhZGJlZWY=`,
 							"Base64: ZGVhZGJlZWY=",
 						},
 						StackTrace: []*stacktrace.StackFrame{
-							{SourceFile: "com.example.parser.Parser",
+							{
+								SourceFile:  "src/main/java/com/example/parser/Parser.java",
 								Line:        11,
 								Column:      0,
 								FrameNumber: 0,
-								Function:    "parseBytes"},
+								Function:    "com.example.parser.Parser.parseBytes",
+							},
+							{
+								SourceFile:  "FuzzParser.java",
+								Line:        23,
+								Column:      0,
+								FrameNumber: 0,
+								Function:    "fuzz_targets.FuzzParser.fuzzerTestOneInput",
+							},
 						},
 					},
 				},
 			},
 		},
 		{
-			name: "jazzer FuzzerSecurityIssue output contains script",
+			name:          "jazzer FuzzerSecurityIssue output contains script",
+			supportJazzer: true,
 			logs: `
 INFO: A corpus is not provided, starting from an empty corpus
 == Java Exception: com.code_intelligence.jazzer.api.FuzzerSecurityIssueHigh: Output contains </script
@@ -430,6 +450,11 @@ Caused by: com.code_intelligence.jazzer.api.FuzzerSecurityIssueHigh: Output cont
 QQ<script-
 ` + fmt.Sprintf("artifact_prefix='./'; Test unit written to %s", testInputFile.Name()) + `
 Base64: UVFcb1w8L1xzY3JpcHQt`,
+			sourceMap: &sourcemap.SourceMap{
+				JavaPackages: map[string][]string{
+					"com.example": {"src/main/java/com/example/JsonSanitizerXSSFuzzer.java"},
+				},
+			},
 			expected: []*report.Report{
 				{Status: report.RunStatusInitializing},
 				{
@@ -449,26 +474,28 @@ Base64: UVFcb1w8L1xzY3JpcHQt`,
 							fmt.Sprintf("artifact_prefix='./'; Test unit written to %s", testInputFile.Name()),
 							"Base64: UVFcb1w8L1xzY3JpcHQt",
 						},
+						StackTrace: []*stacktrace.StackFrame{
+							{
+								SourceFile:  "src/main/java/com/example/JsonSanitizerXSSFuzzer.java",
+								Line:        44,
+								Column:      0,
+								FrameNumber: 0,
+								Function:    "com.example.JsonSanitizerXSSFuzzer.fuzzerTestOneInput",
+							},
+						},
 					},
 				},
 			},
 		},
 		{
-			name: "jazzer FuzzerSecurityIssue remote code execution",
+			name:          "jazzer FuzzerSecurityIssue remote code execution",
+			supportJazzer: true,
 			logs: `
 INFO: A corpus is not provided, starting from an empty corpus
 == Java Exception: com.code_intelligence.jazzer.api.FuzzerSecurityIssueHigh: Remote Code Execution
 Unrestricted class loading based on externally controlled data may allow
 remote code execution depending on available classes on the classpath.
-	at jaz.Zer.<clinit>(Zer.java:54)
-	at java.base/java.lang.Class.forName0(Native Method)
-	at java.base/java.lang.Class.forName(Class.java:315)
 	at com.github.CodeIntelligenceTesting.cifuzz.ExploreMe.exploreMe(ExploreMe.java:22)
-	at com.github.CodeIntelligenceTesting.cifuzz.FuzzTestCase.myFuzzTest(FuzzTestCase.java:13)
-	at com.code_intelligence.jazzer.runtime.FuzzTargetRunnerNatives.startLibFuzzer(Native Method)
-	at com.code_intelligence.jazzer.driver.FuzzTargetRunner.startLibFuzzer(FuzzTargetRunner.java:380)
-	at com.code_intelligence.jazzer.driver.FuzzTargetRunner.startLibFuzzer(FuzzTargetRunner.java:254)
-	at com.code_intelligence.jazzer.driver.Driver.start(Driver.java:92)
 DEDUP_TOKEN: e943c470c21ef432
 == libFuzzer crashing input ==
 0x40,0x6a,0x61,0x7a,0x2e,0x5a,0x65,0x72,0000000000000000000
@@ -476,6 +503,11 @@ DEDUP_TOKEN: e943c470c21ef432
 @jaz.Zer\012-\037\000\000!\000\037
 ` + fmt.Sprintf("artifact_prefix='./'; Test unit written to %s", testInputFile.Name()) + `
 Base64: QGphei5aZXIKLR8AACEAHw==`,
+			sourceMap: &sourcemap.SourceMap{
+				JavaPackages: map[string][]string{
+					"com.github.CodeIntelligenceTesting.cifuzz": {"src/main/java/com/github/CodeIntelligenceTesting/cifuzz/ExploreMe.java"},
+				},
+			},
 			expected: []*report.Report{
 				{Status: report.RunStatusInitializing},
 				{
@@ -489,15 +521,7 @@ Base64: QGphei5aZXIKLR8AACEAHw==`,
 							"== Java Exception: com.code_intelligence.jazzer.api.FuzzerSecurityIssueHigh: Remote Code Execution",
 							"Unrestricted class loading based on externally controlled data may allow",
 							"remote code execution depending on available classes on the classpath.",
-							"	at jaz.Zer.<clinit>(Zer.java:54)",
-							"	at java.base/java.lang.Class.forName0(Native Method)",
-							"	at java.base/java.lang.Class.forName(Class.java:315)",
 							"	at com.github.CodeIntelligenceTesting.cifuzz.ExploreMe.exploreMe(ExploreMe.java:22)",
-							"	at com.github.CodeIntelligenceTesting.cifuzz.FuzzTestCase.myFuzzTest(FuzzTestCase.java:13)",
-							"	at com.code_intelligence.jazzer.runtime.FuzzTargetRunnerNatives.startLibFuzzer(Native Method)",
-							"	at com.code_intelligence.jazzer.driver.FuzzTargetRunner.startLibFuzzer(FuzzTargetRunner.java:380)",
-							"	at com.code_intelligence.jazzer.driver.FuzzTargetRunner.startLibFuzzer(FuzzTargetRunner.java:254)",
-							"	at com.code_intelligence.jazzer.driver.Driver.start(Driver.java:92)",
 							"DEDUP_TOKEN: e943c470c21ef432",
 							"== libFuzzer crashing input ==",
 							"0x40,0x6a,0x61,0x7a,0x2e,0x5a,0x65,0x72,0000000000000000000",
@@ -507,18 +531,21 @@ Base64: QGphei5aZXIKLR8AACEAHw==`,
 							"Base64: QGphei5aZXIKLR8AACEAHw==",
 						},
 						StackTrace: []*stacktrace.StackFrame{
-							{SourceFile: "com.github.CodeIntelligenceTesting.cifuzz.ExploreMe",
+							{
+								SourceFile:  "src/main/java/com/github/CodeIntelligenceTesting/cifuzz/ExploreMe.java",
 								Line:        22,
 								Column:      0,
 								FrameNumber: 0,
-								Function:    "exploreMe"},
+								Function:    "com.github.CodeIntelligenceTesting.cifuzz.ExploreMe.exploreMe",
+							},
 						},
 					},
 				},
 			},
 		},
 		{
-			name: "java assertion error",
+			name:          "java assertion error",
+			supportJazzer: true,
 			logs: `
 INFO: A corpus is not provided, starting from an empty corpus
 == Java Assertion Error
@@ -684,7 +711,9 @@ Base64: i/SIw2hR3wI=`,
 			},
 		},
 		{
-			name: "timeout-error",
+			name:            "timeout-error",
+			supportJazzer:   true,
+			supportJazzerJS: true,
 			logs: `INFO: Running with entropic power schedule (0xFF, 100).
 INFO: Seed: 3221175179
 INFO: Loaded 1 modules   (8 inline 8-bit counters): 8 [0x5acf93, 0x5acf9b),
@@ -742,7 +771,8 @@ SUMMARY: libFuzzer: timeout`,
 			},
 		},
 		{
-			name: "jazzer corpus dirs",
+			name:          "jazzer corpus dirs",
+			supportJazzer: true,
 			logs: fmt.Sprintf(`
 INFO: using inputs from: %s
 INFO: using inputs from: %s
@@ -759,12 +789,202 @@ INFO: using inputs from: /tmp/jazzer-java-seeds5643680988214732014`,
 				},
 			},
 		},
+		{
+			name:            "jazzer.js unhandled exception",
+			supportJazzerJS: true,
+			logs: fmt.Sprintf(`
+==126471== Uncaught Exception: Error: Crash!
+    at unhandled-exception/UnhandledException.fuzz.js:3:9
+MS: 4 InsertByte-CMP-ShuffleBytes-CMP- DE: "\000\000"-"Fuzz"-; base unit: adc83b19e793491b1c6ea0fd8b46cd9f32e592fc
+0x46,0x75,0x7a,0x7a,
+Fuzz
+artifact_prefix='./'; Test unit written to %s
+Base64: RnV6eg==`, testInputFile.Name()),
+			expected: []*report.Report{
+				{
+					Status: report.RunStatusRunning,
+					Finding: &finding.Finding{
+						Type:      finding.ErrorTypeWarning,
+						Details:   "Error: Crash!",
+						InputData: testInput,
+						InputFile: testInputFile.Name(),
+						Logs: []string{
+							"==126471== Uncaught Exception: Error: Crash!",
+							"    at unhandled-exception/UnhandledException.fuzz.js:3:9",
+							`MS: 4 InsertByte-CMP-ShuffleBytes-CMP- DE: "\000\000"-"Fuzz"-; base unit: adc83b19e793491b1c6ea0fd8b46cd9f32e592fc`,
+							"0x46,0x75,0x7a,0x7a,",
+							"Fuzz",
+							fmt.Sprintf("artifact_prefix='./'; Test unit written to %s", testInputFile.Name()),
+							"Base64: RnV6eg==",
+						},
+						StackTrace: []*stacktrace.StackFrame{
+							{
+								SourceFile:  "unhandled-exception/UnhandledException.fuzz.js",
+								Line:        3,
+								Column:      9,
+								FrameNumber: 0,
+								Function:    "",
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:            "jazzer.js command injection",
+			supportJazzerJS: true,
+			logs: fmt.Sprintf(`
+==126471== Command Injection in exec(); called with 'jazzer'
+    at command-injection/CommandInjection.fuzz.js:3:9
+MS: 4 InsertByte-CMP-ShuffleBytes-CMP- DE: "\000\000"-"Fuzz"-; base unit: adc83b19e793491b1c6ea0fd8b46cd9f32e592fc
+0x46,0x75,0x7a,0x7a,
+Fuzz
+artifact_prefix='./'; Test unit written to %s
+Base64: RnV6eg==`, testInputFile.Name()),
+			expected: []*report.Report{
+				{
+					Status: report.RunStatusRunning,
+					Finding: &finding.Finding{
+						Type:      finding.ErrorTypeWarning,
+						Details:   "Command Injection",
+						InputData: testInput,
+						InputFile: testInputFile.Name(),
+						Logs: []string{
+							"==126471== Command Injection in exec(); called with 'jazzer'",
+							"    at command-injection/CommandInjection.fuzz.js:3:9",
+							`MS: 4 InsertByte-CMP-ShuffleBytes-CMP- DE: "\000\000"-"Fuzz"-; base unit: adc83b19e793491b1c6ea0fd8b46cd9f32e592fc`,
+							"0x46,0x75,0x7a,0x7a,",
+							"Fuzz",
+							fmt.Sprintf("artifact_prefix='./'; Test unit written to %s", testInputFile.Name()),
+							"Base64: RnV6eg==",
+						},
+						StackTrace: []*stacktrace.StackFrame{
+							{
+								SourceFile:  "command-injection/CommandInjection.fuzz.js",
+								Line:        3,
+								Column:      9,
+								FrameNumber: 0,
+								Function:    "",
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:            "jazzer.js path traversal",
+			supportJazzerJS: true,
+			logs: fmt.Sprintf(`
+==126471== Path Traversal in openSync(): called with 'jazzer'
+    at path-traversal/PathTraversal.fuzz.js:3:9
+MS: 4 InsertByte-CMP-ShuffleBytes-CMP- DE: "\000\000"-"Fuzz"-; base unit: adc83b19e793491b1c6ea0fd8b46cd9f32e592fc
+0x46,0x75,0x7a,0x7a,
+Fuzz
+artifact_prefix='./'; Test unit written to %s
+Base64: RnV6eg==`, testInputFile.Name()),
+			expected: []*report.Report{
+				{
+					Status: report.RunStatusRunning,
+					Finding: &finding.Finding{
+						Type:      finding.ErrorTypeWarning,
+						Details:   "Path Traversal",
+						InputData: testInput,
+						InputFile: testInputFile.Name(),
+						Logs: []string{
+							"==126471== Path Traversal in openSync(): called with 'jazzer'",
+							"    at path-traversal/PathTraversal.fuzz.js:3:9",
+							`MS: 4 InsertByte-CMP-ShuffleBytes-CMP- DE: "\000\000"-"Fuzz"-; base unit: adc83b19e793491b1c6ea0fd8b46cd9f32e592fc`,
+							"0x46,0x75,0x7a,0x7a,",
+							"Fuzz",
+							fmt.Sprintf("artifact_prefix='./'; Test unit written to %s", testInputFile.Name()),
+							"Base64: RnV6eg==",
+						},
+						StackTrace: []*stacktrace.StackFrame{
+							{
+								SourceFile:  "path-traversal/PathTraversal.fuzz.js",
+								Line:        3,
+								Column:      9,
+								FrameNumber: 0,
+								Function:    "",
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:            "jazzer.js prototype pollution",
+			supportJazzerJS: true,
+			logs: fmt.Sprintf(`
+==126471== Prototype Pollution: Prototype of Object changed.
+MS: 4 InsertByte-CMP-ShuffleBytes-CMP- DE: "\000\000"-"Fuzz"-; base unit: adc83b19e793491b1c6ea0fd8b46cd9f32e592fc
+0x46,0x75,0x7a,0x7a,
+Fuzz
+artifact_prefix='./'; Test unit written to %s
+Base64: RnV6eg==`, testInputFile.Name()),
+			expected: []*report.Report{
+				{
+					Status: report.RunStatusRunning,
+					Finding: &finding.Finding{
+						Type:      finding.ErrorTypeWarning,
+						Details:   "Prototype Pollution",
+						InputData: testInput,
+						InputFile: testInputFile.Name(),
+						Logs: []string{
+							"==126471== Prototype Pollution: Prototype of Object changed.",
+							`MS: 4 InsertByte-CMP-ShuffleBytes-CMP- DE: "\000\000"-"Fuzz"-; base unit: adc83b19e793491b1c6ea0fd8b46cd9f32e592fc`,
+							"0x46,0x75,0x7a,0x7a,",
+							"Fuzz",
+							fmt.Sprintf("artifact_prefix='./'; Test unit written to %s", testInputFile.Name()),
+							"Base64: RnV6eg==",
+						},
+					},
+				},
+			},
+		},
+		{
+			name:            "jazzer.js timeout",
+			supportJazzerJS: true,
+			logs: fmt.Sprintf(`
+ALARM: working on the last Unit for 1 seconds
+       and the timeout value is 1 (use -timeout=N to change)
+MS: 4 InsertByte-CMP-ShuffleBytes-CMP- DE: "\000\000"-"Fuzz"-; base unit: adc83b19e793491b1c6ea0fd8b46cd9f32e592fc
+0x46,0x75,0x7a,0x7a,
+Fuzz
+artifact_prefix='./'; Test unit written to %s
+Base64: RnV6eg==`, testInputFile.Name()),
+			expected: []*report.Report{
+				{
+					Status: report.RunStatusRunning,
+					Finding: &finding.Finding{
+						Type:      finding.ErrorTypeCrash,
+						Details:   "timeout after 1 seconds",
+						InputData: testInput,
+						InputFile: testInputFile.Name(),
+						Logs: []string{
+							"ALARM: working on the last Unit for 1 seconds",
+							"       and the timeout value is 1 (use -timeout=N to change)",
+							`MS: 4 InsertByte-CMP-ShuffleBytes-CMP- DE: "\000\000"-"Fuzz"-; base unit: adc83b19e793491b1c6ea0fd8b46cd9f32e592fc`,
+							"0x46,0x75,0x7a,0x7a,",
+							"Fuzz",
+							fmt.Sprintf("artifact_prefix='./'; Test unit written to %s", testInputFile.Name()),
+							"Base64: RnV6eg==",
+						},
+					},
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r, w := io.Pipe()
 
-			reporter := NewLibfuzzerOutputParser(&Options{SupportJazzer: true, ProjectDir: projectDir})
+			if tt.name == "jazzer FuzzerSecurityIssue output contains script" {
+				assert.True(t, true)
+
+			}
+			options := &Options{SupportJazzer: tt.supportJazzer, SupportJazzerJS: tt.supportJazzerJS, SourceMap: tt.sourceMap, ProjectDir: projectDir}
+			reporter := NewLibfuzzerOutputParser(options)
 			reportsCh := make(chan *report.Report, maxBufferedReports)
 			reporterErrCh := make(chan error)
 

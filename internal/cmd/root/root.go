@@ -9,7 +9,6 @@ import (
 
 	"github.com/alessio/shellescape"
 	"github.com/pkg/errors"
-	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -23,6 +22,7 @@ import (
 	initCmd "code-intelligence.com/cifuzz/internal/cmd/init"
 	integrateCmd "code-intelligence.com/cifuzz/internal/cmd/integrate"
 	loginCmd "code-intelligence.com/cifuzz/internal/cmd/login"
+	printflagsCmds "code-intelligence.com/cifuzz/internal/cmd/print-flags"
 	reloadCmd "code-intelligence.com/cifuzz/internal/cmd/reload"
 	remoteRunCmd "code-intelligence.com/cifuzz/internal/cmd/remoterun"
 	runCmd "code-intelligence.com/cifuzz/internal/cmd/run"
@@ -48,18 +48,13 @@ func New() (*cobra.Command, error) {
 
 			err := cmdutils.Chdir()
 			if err != nil {
-				log.Error(err)
-				return cmdutils.ErrSilent
+				return err
 			}
 
 			if cmdutils.NeedsConfig(cmd) {
 				_, err = config.FindConfigDir()
 				if errors.Is(err, os.ErrNotExist) {
-					// The project directory doesn't exist, this is an expected
-					// error, so we print it and return a silent error to avoid
-					// printing a stack trace
-					log.Error(err, fmt.Sprintf("%v\nUse 'cifuzz init' to set up a project for use with cifuzz.", err))
-					return cmdutils.ErrSilent
+					return fmt.Errorf("%v\n%s", err, "Use 'cifuzz init' to set up a project for use with cifuzz.")
 				}
 				if err != nil {
 					return err
@@ -105,6 +100,7 @@ func New() (*cobra.Command, error) {
 	cobra.EnableCommandSorting = false
 	rootCmd.AddCommand(loginCmd.New())
 	rootCmd.AddCommand(initCmd.New())
+	rootCmd.AddCommand(containerCmd.New())
 	rootCmd.AddCommand(createCmd.New())
 	rootCmd.AddCommand(runCmd.New())
 	rootCmd.AddCommand(remoteRunCmd.New())
@@ -114,10 +110,13 @@ func New() (*cobra.Command, error) {
 	rootCmd.AddCommand(findingCmd.New())
 	rootCmd.AddCommand(integrateCmd.New())
 
-	// Only add containers command if envvar CIFUZZ_PRERELEASE is set
-	if os.Getenv("CIFUZZ_PRERELEASE") != "" {
+	for _, cmd := range printflagsCmds.New() {
+		rootCmd.AddCommand(cmd)
+	}
+
+	if runtime.GOOS != "windows" {
+		// The execute command is not supported on Windows
 		rootCmd.AddCommand(executeCmd.New())
-		rootCmd.AddCommand(containerCmd.New())
 	}
 
 	return rootCmd, nil
@@ -134,68 +133,54 @@ func Execute() {
 
 	var cmd *cobra.Command
 	if cmd, err = rootCmd.ExecuteC(); err != nil {
+		// Error types that need special handling
+		var usageErr *cmdutils.IncorrectUsageError
+		var couldBeSandboxError *cmdutils.CouldBeSandboxError
+		var signalErr *cmdutils.SignalError
 		var silentErr *cmdutils.SilentError
 
-		// Errors that are not ErrSilent are not expected
-		// and we want to show the full stacktrace in verbose mode
-		if !errors.As(err, &silentErr) {
-			icon := "❌ "
-			style := pterm.Style{pterm.Bold, pterm.FgRed}
-			if log.PlainStyle() {
-				icon = ""
-				style = pterm.Style{}
-			}
-
-			if viper.GetBool("verbose") {
-				type stackTracer interface {
-					StackTrace() errors.StackTrace
-				}
-				var st stackTracer
-				// Print all error messages (in case of wrapping)
-				// but only print the stacktrace of the root error cause
-				if errors.As(errors.Cause(err), &st) {
-					_, _ = fmt.Fprint(cmd.ErrOrStderr(), style.Sprintf("\n%s%v%+v\n", icon, err, st.StackTrace()))
-				} else {
-					// Catch cases where we either did not add any stacktrace/wrapped the error
-					// or the error does not implement the interface for the stacktracer e.g. os.ErrExist
-					_, _ = fmt.Fprint(cmd.ErrOrStderr(), style.Sprintf("\n%s%v\n", icon, err))
-				}
-			} else {
-				supportMsg := "More information can be acquired running the command in verbose mode (-v).\n"
-				_, _ = fmt.Fprint(cmd.ErrOrStderr(), style.Sprintf("%s%s\n%s", icon, err, supportMsg))
-			}
-		}
-
-		// We only want to print the usage message if an ErrIncorrectUsage
-		// was returned or it's an error produced by cobra which was
-		// caused by incorrect usage
-		var usageErr *cmdutils.IncorrectUsageError
 		if errors.As(err, &usageErr) ||
 			strings.HasPrefix(err.Error(), "unknown command") ||
+			strings.HasPrefix(err.Error(), "invalid argument") ||
 			regexp.MustCompile(`(accepts|requires).*arg\(s\)`).MatchString(err.Error()) {
-
-			// Ensure that there is an extra newline between the error
-			// and the usage message
-			if !strings.HasSuffix(err.Error(), "\n") {
-				_, _ = fmt.Fprintln(cmd.ErrOrStderr())
-			}
-
 			// Make cmd.Help() print to stderr
 			cmd.SetOut(cmd.ErrOrStderr())
+
 			// Print the usage message of the command. We use cmd.Help()
 			// here instead of cmd.UsageString() because the latter
 			// doesn't include the long description.
 			_ = cmd.Help()
+
+			// Add "Invalid Usage" in front of error message
+			err = errors.WithMessage(err, "Invalid usage")
 		}
 
-		var couldBeSandboxError *cmdutils.CouldBeSandboxError
-		if errors.As(err, &couldBeSandboxError) {
-			// Ensure that there is an extra newline between the error
-			// and the following message
-			if !strings.HasSuffix(err.Error(), "\n") {
-				_, _ = fmt.Fprintln(cmd.ErrOrStderr())
+		if errors.As(err, &signalErr) {
+			// Print error message without stack trace
+			log.ErrorMsg(err.Error())
+
+			// Exit with the correct exit status
+			os.Exit(128 + int(signalErr.Signal))
+		}
+
+		if !errors.As(err, &silentErr) {
+			// For any other errors that are not silent (= not expected)
+			// we want to print the error and their stack trace in
+			// verbose mode (except IncorrectUsageError which should only
+			// print the message)
+			if errors.As(err, &usageErr) {
+				log.ErrorMsg(err.Error())
+			} else {
+				log.Error(err)
 			}
-			msg := `Note: If you don't expect this fuzz test to do any harm to the system
+		}
+
+		if errors.As(err, &couldBeSandboxError) {
+			// If the error could be caused by sandboxing/minijail we want to
+			// print a note after the error message
+			msg := `
+Note: This error could have occurred due to sandboxing.
+If you don't expect this fuzz test to do any harm to the system
 accidentally (like overwriting files), you might want to try
 running it without sandboxing:
 
@@ -204,14 +189,8 @@ running it without sandboxing:
 For more information on cifuzz sandboxing, see:
 
     https://github.com/CodeIntelligenceTesting/cifuzz/blob/main/docs/Getting-Started.md#sandboxing
-
 `
 			log.Notef(msg, shellescape.QuoteCommand(os.Args))
-		}
-
-		var signalErr *cmdutils.SignalError
-		if errors.As(err, &signalErr) {
-			os.Exit(128 + int(signalErr.Signal))
 		}
 
 		os.Exit(1)
@@ -219,7 +198,7 @@ For more information on cifuzz sandboxing, see:
 }
 
 func rootFlagErrorFunc(cmd *cobra.Command, err error) error {
-	if err == pflag.ErrHelp {
+	if errors.Is(err, pflag.ErrHelp) {
 		return err
 	}
 	return cmdutils.WrapIncorrectUsageError(err)

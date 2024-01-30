@@ -13,19 +13,20 @@ import (
 	"github.com/mattn/go-zglob"
 	"github.com/pkg/errors"
 
+	"code-intelligence.com/cifuzz/internal/build/java/gradle"
+	"code-intelligence.com/cifuzz/internal/build/java/maven"
 	"code-intelligence.com/cifuzz/internal/cmdutils"
 	"code-intelligence.com/cifuzz/internal/config"
+	"code-intelligence.com/cifuzz/util/fileutil"
 	"code-intelligence.com/cifuzz/util/regexutil"
 )
 
 // TODO: use file info of cmake instead of this regex
-var cmakeFuzzTestFileNamePattern = regexp.MustCompile(`add_fuzz_test\((?P<fuzzTest>[a-zA-Z0-9_.+=,@~-]+)\s(?P<file>[a-zA-Z0-9_.+=,@~-]+)\)`)
+var cmakeFuzzTestFileNamePattern = regexp.MustCompile(`add_fuzz_test\((?P<fuzzTest>[a-zA-Z0-9_.+=,@~-]+)\s(?P<file>[a-zA-Z0-9/\_.+=,@~-]+)\)`)
 
 // resolve determines the corresponding fuzz test name to a given source file.
 // The path has to be relative to the project directory.
 func resolve(path, buildSystem, projectDir string) (string, error) {
-	errNoFuzzTest := errors.New("no fuzz test found")
-
 	switch buildSystem {
 	case config.BuildSystemCMake:
 		cmakeLists, err := findAllCMakeLists(projectDir)
@@ -52,7 +53,7 @@ func resolve(path, buildSystem, projectDir string) (string, error) {
 				}
 			}
 		}
-		return "", errNoFuzzTest
+		return "", errors.New("no fuzz test found")
 
 	case config.BuildSystemBazel:
 		var err error
@@ -72,12 +73,13 @@ func resolve(path, buildSystem, projectDir string) (string, error) {
 		}
 		arg := fmt.Sprintf(`attr(generator_function, cc_fuzz_test, same_pkg_direct_rdeps(%q))`, path)
 		cmd := exec.Command("bazel", "query", arg)
+		cmd.Stderr = os.Stderr
 		out, err := cmd.Output()
 		if err != nil {
 			// if a bazel query fails it is because no target could be found but it would
 			// only return "exit status 7" as error which is no useful information for
 			// the user, so instead we return the custom error
-			return "", errNoFuzzTest
+			return "", errors.New("no fuzz test found")
 		}
 
 		fuzzTest := strings.TrimSpace(string(out))
@@ -86,39 +88,69 @@ func resolve(path, buildSystem, projectDir string) (string, error) {
 		return fuzzTest, nil
 
 	case config.BuildSystemMaven, config.BuildSystemGradle:
-		testDir := filepath.Join(projectDir, "src", "test")
-		matches, err := zglob.Glob(filepath.Join(testDir, "**", "*.{java,kt}"))
-		if err != nil {
-			return "", errors.WithStack(err)
+		var testDirs []string
+		var err error
+		if buildSystem == config.BuildSystemMaven {
+			testDir, err := maven.GetTestDir(projectDir)
+			if err != nil {
+				return "", err
+			}
+			testDirs = append(testDirs, testDir)
+		} else if buildSystem == config.BuildSystemGradle {
+			testDirs, err = gradle.GetTestSourceSets(projectDir)
+			if err != nil {
+				return "", err
+			}
 		}
 
-		var pathToFile string
+		var fuzzTest string
 		found := false
-		for _, match := range matches {
-			if (filepath.IsAbs(path) && match == path) ||
-				match == filepath.Join(projectDir, path) {
-				pathToFile = match
-				found = true
+		for _, testDir := range testDirs {
+			// Handle case that gradle or maven command return default values that don't actually exist
+			exist, err := fileutil.Exists(testDir)
+			if err != nil {
+				return "", errors.WithMessagef(err, "Failed to access test directory %s", testDir)
+			}
+			if !exist {
+				continue
 			}
 
-			if !found && runtime.GOOS == "windows" {
-				// Try out different slashes under windows to support both formats for user convenience
-				// (since zglob.Glob() returns paths with slashes instead of backslashes on windows)
-				match = strings.ReplaceAll(match, "/", "\\")
+			matches, err := zglob.Glob(filepath.Join(testDir, "**", "*.{java,kt}"))
+			if err != nil {
+				return "", errors.WithStack(err)
+			}
+
+			var pathToFile string
+			for _, match := range matches {
 				if (filepath.IsAbs(path) && match == path) ||
 					match == filepath.Join(projectDir, path) {
 					pathToFile = match
 					found = true
 				}
+
+				if !found && runtime.GOOS == "windows" {
+					// Try out different slashes under windows to support both formats for user convenience
+					// (since zglob.Glob() returns paths with slashes instead of backslashes on windows)
+					match = strings.ReplaceAll(match, "/", "\\")
+					if (filepath.IsAbs(path) && match == path) ||
+						match == filepath.Join(projectDir, path) {
+						pathToFile = match
+						found = true
+					}
+				}
 			}
+			if !found {
+				continue
+			}
+
+			fuzzTest, err = cmdutils.ConstructJVMFuzzTestIdentifier(pathToFile, testDir)
+			if err != nil {
+				return "", err
+			}
+			break
 		}
 		if !found {
-			return "", errNoFuzzTest
-		}
-
-		fuzzTest, err := cmdutils.ConstructJVMFuzzTestIdentifier(pathToFile, testDir)
-		if err != nil {
-			return "", err
+			return "", errors.New("no fuzz test found")
 		}
 		return fuzzTest, nil
 
@@ -163,7 +195,7 @@ func FuzzTestArguments(resolveSourceFile bool, args []string, buildSystem, proje
 		for _, arg := range args {
 			fuzzTest, err := resolve(arg, buildSystem, projectDir)
 			if err != nil {
-				return nil, errors.Wrap(err, fmt.Sprintf("Failed to resolve source file %s", arg))
+				return nil, errors.WithMessagef(err, "Failed to resolve source file %s", arg)
 			}
 			fuzzTests = append(fuzzTests, fuzzTest)
 		}

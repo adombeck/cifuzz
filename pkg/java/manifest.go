@@ -48,7 +48,7 @@ func CreateManifestJar(entries map[string]string, directory string) (string, err
 
 	err = writeManifest(entries, manifestFile)
 	if err != nil {
-		return "", errors.WithStack(err)
+		return "", err
 	}
 
 	err = jarWriter.Close()

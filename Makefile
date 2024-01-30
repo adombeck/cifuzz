@@ -80,7 +80,7 @@ deps/integration-tests:
 .PHONY: deps/dev
 deps/dev: deps
 	go install github.com/incu6us/goimports-reviser/v2@latest
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.51.2
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.54.2
 	yarn install --silent
 
 
@@ -113,26 +113,39 @@ installer/darwin-arm64:
 	GOOS=darwin GOARCH=arm64 go build -tags installer -o $(installer_base_path)_macOS_arm64 cmd/installer/installer.go
 	$(RM) cmd/installer/build
 
+###
+# Building binaries for all platforms
+# With a switch for coverage instrumentation
+###
+
+# Decide between build and build-coverage
+build_target := $(word 1, $(subst /, ,$(MAKECMDGOALS)))
+build_flags :=
+build-coverage_flags := --cover
+# Used with build_target to decide flags to pass to the go build command
+define get_go_build_args
+	$($(word 1, $(subst /, ,$(1)))_flags)
+endef
+
 .PHONY: build
 build: build/$(current_os)
 
-.PHONY: build/all
-build/all: build/linux build/windows build/darwin ;
+build/all build-coverage/all: $(build_target)/linux $(build_target)/windows $(build_target)/darwin
 
-.PHONY: build/linux
-build/linux: deps
-	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(binary_base_path)_linux cmd/cifuzz/main.go
+.PHONY: build/linux build-coverage/linux
+build/linux build-coverage/linux: deps
+	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(call get_go_build_args, $@) -o $(binary_base_path)_linux cmd/cifuzz/main.go
 
-.PHONY: build/windows
-build/windows: deps
-	env GOOS=windows GOARCH=amd64 go build -o $(binary_base_path)_windows.exe cmd/cifuzz/main.go
+.PHONY: build/windows build-coverage/windows
+build/windows build-coverage/windows: deps
+	env GOOS=windows GOARCH=amd64 go build $(call get_go_build_args, $@) -o $(binary_base_path)_windows.exe cmd/cifuzz/main.go
 
-.PHONY: build/darwin
-build/darwin: deps
+.PHONY: build/darwin build-coverage/darwin
+build/darwin build-coverage/darwin: deps
 ifeq ($(UNAME_P), arm)
-	env GOOS=darwin GOARCH=arm64 go build -o $(binary_base_path)_macOS cmd/cifuzz/main.go
+	env GOOS=darwin GOARCH=arm64 go build $(call get_go_build_args, $@) -o $(binary_base_path)_macOS cmd/cifuzz/main.go
 else
-	env GOOS=darwin GOARCH=amd64 go build -o $(binary_base_path)_macOS cmd/cifuzz/main.go
+	env GOOS=darwin GOARCH=amd64 go build $(call get_go_build_args, $@) -o $(binary_base_path)_macOS cmd/cifuzz/main.go
 endif
 
 .PHONY: lint
@@ -142,7 +155,7 @@ lint: deps/dev
 .PHONY: fmt
 fmt: deps/dev
 	find . -type f -name "*.go" -not -path "./.git/*" -print0 | xargs -0 -n1 goimports-reviser -project-name $(project) -file-path
-	npx prettier --loglevel=warn --write .
+	npx prettier --ignore-path .gitignore --ignore-path .prettierignore --plugin=@prettier/plugin-xml --print-width=120 --xml-whitespace-sensitivity=preserve --log-level=warn --write .
 
 .PHONY: fmt/check
 fmt/check: deps/dev
@@ -156,7 +169,7 @@ fmt/check: deps/dev
 		echo -e >&2 "Unformatted files:\n$${DIFF}"; \
 		exit 1; \
 	fi;
-	npx prettier --loglevel=warn --check .
+	npx prettier --ignore-path .gitignore --ignore-path .prettierignore --plugin=@prettier/plugin-xml --print-width=120 --xml-whitespace-sensitivity=preserve --log-level=warn --check .
 
 .PHONY: tidy
 tidy:
@@ -197,21 +210,18 @@ test/integration: deps deps/test deps/integration-tests
 	go test -json -v -timeout=20m ./... -run 'TestIntegration.*' 2>&1 | tee gotest.log | gotestfmt -hide all
 
 .PHONY: test/e2e
-test/e2e: deps deps/test install
+test/e2e: deps deps/test build/linux build/windows build-container-image start-container-registry
 test/e2e: export E2E_TESTS_MATRIX = 1
 test/e2e:
-	go test -json -v ./e2e-tests/... | tee gotest.log | gotestfmt
-
-# For Release E2E testing, we want to use the installed cifuzz, instead of installing from source.
-.PHONY: test/e2e-use-installed-cifuzz
-test/e2e-use-installed-cifuzz: deps/test
-test/e2e-use-installed-cifuzz: export E2E_TESTS_MATRIX = 1
-test/e2e-use-installed-cifuzz:
-	go test -json -v ./e2e-tests/... | tee gotest.log | gotestfmt
+	go test -json -v ./e2e/... | tee gotest.log | gotestfmt
 
 .PHONY: test/race
 test/race: deps build/$(current_os)
 	go test -v ./... -race
+
+.PHONY: test/maven
+test/maven:
+	cd tools/list-fuzz-tests && mvn test
 
 .PHONY: coverage
 coverage: export E2E_TESTS_MATRIX = V
@@ -230,10 +240,10 @@ coverage/merge:
 
 .PHONY: coverage/e2e
 coverage/e2e: export E2E_TESTS_MATRIX = V
-coverage/e2e: deps install/coverage
+coverage/e2e: deps build-coverage/$(current_os)
 	-$(RM) coverage/e2e
 	mkdir -p coverage/e2e
-	-go test ./e2e-tests/...
+	-go test ./e2e/... -v
 	go tool covdata func -i=./coverage/e2e
 
 .PHONY: coverage/integration
@@ -267,8 +277,12 @@ site/update:
 	git -C site commit -m "update docs" || true
 	git -C site push
 
+.PHONY: build-container-image
+build-container-image: export DOCKER_BUILDKIT = 1
 build-container-image: build/linux
-	DOCKER_BUILDKIT=1 docker build --platform linux/amd64 -f docker/cifuzz-base/Dockerfile -t $(image_tag) .
+ifneq ($(current_os),windows)
+	docker build --platform linux/amd64 -f docker/cifuzz-base/Dockerfile -t $(image_tag) .
+endif
 
 push-container-image: build-container-image
 	# Exit if GITHUB_TOKEN or GITHUB_USER are not set
@@ -279,8 +293,23 @@ push-container-image: build-container-image
 	echo "${GITHUB_TOKEN}" | docker login ghcr.io -u "${GITHUB_USER}" --password-stdin
 	docker push "$(image_tag)"
 
+.PHONY: build-llvm-test-container-image
+build-llvm-test-container-image: export DOCKER_BUILDKIT = 1
+build-llvm-test-container-image: build/linux
+ifneq ($(current_os),windows)
+	docker build --platform linux/amd64 -f docker/llvm-test/Dockerfile -t cifuzz-llvm-test:latest .
+endif
+
 .PHONY: installer-via-docker
+installer-via-docker: export DOCKER_BUILDKIT = 1
 installer-via-docker:
 	@echo "Building a cifuzz Linux installer"
 	mkdir -p build/bin
-	DOCKER_BUILDKIT=1 docker build --platform linux/amd64 -f docker/cifuzz-builder/Dockerfile . --target bin --output build/bin
+	docker build --platform linux/amd64 -f docker/cifuzz-builder/Dockerfile . --target bin --output build/bin
+
+.PHONY: start-container-registry
+start-container-registry:
+ifneq ($(current_os),windows)
+	docker stop cifuzz-e2e-test-registry || true
+	docker run --rm -d -p 5000:5000 --name cifuzz-e2e-test-registry registry:2
+endif

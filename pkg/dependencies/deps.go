@@ -1,10 +1,10 @@
 package dependencies
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/Masterminds/semver"
+	"github.com/pkg/errors"
 
 	"code-intelligence.com/cifuzz/pkg/log"
 	"code-intelligence.com/cifuzz/pkg/runfiles"
@@ -36,7 +36,7 @@ const (
 
 	VisualStudio Key = "Visual Studio"
 
-	MessageVersion = "cifuzz requires %s %s or higher, have %s"
+	MessageVersion = "cifuzz requires %s %s or higher, found %s"
 	MessageMissing = "cifuzz requires %s, but it is not installed"
 )
 
@@ -72,6 +72,7 @@ func (dep *Dependency) checkVersion(projectDir string) bool {
 // helper to easily check against functions from the runfiles.RunfilesFinder interface
 func (dep *Dependency) checkFinder(finderFunc func() (string, error)) bool {
 	if _, err := finderFunc(); err != nil {
+		log.Debug(err)
 		return false
 	}
 	return true
@@ -79,7 +80,12 @@ func (dep *Dependency) checkFinder(finderFunc func() (string, error)) bool {
 
 // Check iterates of a list of dependencies and checks if they are fulfilled
 func Check(keys []Key, projectDir string) error {
-	return check(keys, deps, runfiles.Finder, projectDir)
+	err := check(keys, deps, runfiles.Finder, projectDir)
+	if err != nil {
+		return errors.WithMessage(err, "Invalid dependencies")
+	}
+
+	return nil
 }
 
 func Version(key Key, projectDir string) (*semver.Version, error) {

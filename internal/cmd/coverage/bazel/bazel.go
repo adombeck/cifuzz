@@ -12,9 +12,9 @@ import (
 
 	"code-intelligence.com/cifuzz/internal/build"
 	"code-intelligence.com/cifuzz/internal/build/bazel"
-	"code-intelligence.com/cifuzz/internal/cmd/coverage/summary"
 	"code-intelligence.com/cifuzz/internal/cmdutils"
 	"code-intelligence.com/cifuzz/pkg/log"
+	"code-intelligence.com/cifuzz/pkg/parser/coverage"
 	"code-intelligence.com/cifuzz/pkg/runfiles"
 	"code-intelligence.com/cifuzz/util/envutil"
 )
@@ -116,7 +116,11 @@ func (cov *CoverageGenerator) GenerateCoverageReport() (string, error) {
 		return "", errors.WithStack(err)
 	}
 	reportReader := strings.NewReader(string(lcovReportContent))
-	summary.ParseLcov(reportReader).PrintTable(cov.Stderr)
+	summary, err := coverage.ParseLCOVReportIntoSummary(reportReader)
+	if err != nil {
+		return "", err
+	}
+	summary.PrintTable(cov.Stderr)
 
 	commonFlags, err := cov.getBazelCommandFlags()
 	if err != nil {

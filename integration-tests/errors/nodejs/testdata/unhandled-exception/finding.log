@@ -1,0 +1,7 @@
+==49833== Uncaught Exception: Error: Crash!
+    at /tmp/cifuzz-nodejs-testdata-2875010541/unhandled-exception/UnhandledException.fuzz.js:3:9
+MS: 4 InsertByte-InsertByte-CMP-CopyPart- DE: "Fuz"-; base unit: adc83b19e793491b1c6ea0fd8b46cd9f32e592fc
+0x46,0x75,0x7a,0x7a,
+Fuzz
+artifact_prefix='/tmp/cifuzz-nodejs-testdata-2875010541/unhandled-exception/UnhandledException.fuzz/Test_unhandled_exception/'; Test unit written to /tmp/cifuzz-nodejs-testdata-2875010541/unhandled-exception/UnhandledException.fuzz/Test_unhandled_exception/crash-f8138984ad799e1426d1b031689dbbcde57996cd
+Base64: RnV6eg==

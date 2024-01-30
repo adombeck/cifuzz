@@ -14,8 +14,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"code-intelligence.com/cifuzz/internal/build/gradle"
-	"code-intelligence.com/cifuzz/internal/build/maven"
+	"code-intelligence.com/cifuzz/internal/build/java/gradle"
+	"code-intelligence.com/cifuzz/internal/build/java/maven"
 	bazelCoverage "code-intelligence.com/cifuzz/internal/cmd/coverage/bazel"
 	gradleCoverage "code-intelligence.com/cifuzz/internal/cmd/coverage/gradle"
 	llvmCoverage "code-intelligence.com/cifuzz/internal/cmd/coverage/llvm"
@@ -65,8 +65,7 @@ func (opts *coverageOptions) validate() error {
 
 	opts.SeedCorpusDirs, err = cmdutils.ValidateSeedCorpusDirs(opts.SeedCorpusDirs)
 	if err != nil {
-		log.Error(err)
-		return cmdutils.ErrSilent
+		return err
 	}
 
 	if opts.BuildSystem == "" {
@@ -78,8 +77,7 @@ func (opts *coverageOptions) validate() error {
 
 	err = config.ValidateBuildSystem(opts.BuildSystem)
 	if err != nil {
-		log.Error(err)
-		return cmdutils.WrapSilentError(err)
+		return err
 	}
 
 	validFormats := coverage.ValidOutputFormats[opts.BuildSystem]
@@ -112,7 +110,7 @@ func New() *cobra.Command {
 		Long: `This command generates a coverage report for a fuzz test.
 
 The inputs found in the inputs directory of the fuzz test are used in
-addition to optional input directories specified with the seed-corpus flag.
+addition to optional input directories specified by using the seed-corpus flag.
 More details about the build system specific inputs directory location
 can be found in the help message of the run command.
 
@@ -158,20 +156,7 @@ or a lcov trace file.
 
 			err := config.FindAndParseProjectConfig(opts)
 			if err != nil {
-				log.Errorf(err, "Failed to parse cifuzz.yaml: %v", err.Error())
-				return cmdutils.WrapSilentError(err)
-			}
-
-			if opts.BuildSystem == config.BuildSystemNodeJS {
-				if os.Getenv("CIFUZZ_PRERELEASE") == "" {
-					fmt.Println("cifuzz does not support Node.js projects yet.")
-					os.Exit(0)
-				}
-				// Check if the fuzz test contains a filter for the test name
-				if strings.Contains(args[0], ":") {
-					split := strings.Split(args[0], ":")
-					args[0], opts.testNamePattern = split[0], strings.ReplaceAll(split[1], "\"", "")
-				}
+				return err
 			}
 
 			if sliceutil.Contains(
@@ -184,12 +169,17 @@ or a lcov trace file.
 					split := strings.Split(args[0], "::")
 					args[0], opts.targetMethod = split[0], split[1]
 				}
+			} else if opts.BuildSystem == config.BuildSystemNodeJS {
+				// Check if the fuzz test contains a filter for the test name
+				if strings.Contains(args[0], ":") {
+					split := strings.Split(args[0], ":")
+					args[0], opts.testNamePattern = split[0], strings.ReplaceAll(split[1], "\"", "")
+				}
 			}
 
 			fuzzTest, err := resolve.FuzzTestArguments(opts.ResolveSourceFilePath, args, opts.BuildSystem, opts.ProjectDir)
 			if err != nil {
-				log.Error(err)
-				return cmdutils.WrapSilentError(err)
+				return err
 			}
 			opts.fuzzTest = fuzzTest[0]
 			opts.argsToPass = argsToPass
@@ -199,8 +189,7 @@ or a lcov trace file.
 			if logging.ShouldLogBuildToFile() {
 				opts.buildStdout, err = logging.BuildOutputToFile(opts.ProjectDir, []string{opts.fuzzTest})
 				if err != nil {
-					log.Errorf(err, "Failed to setup logging: %v", err.Error())
-					return cmdutils.WrapSilentError(err)
+					return err
 				}
 				opts.buildStderr = opts.buildStdout
 			}
@@ -313,8 +302,18 @@ func (c *coverageCmd) run() error {
 				"These arguments are ignored: %s", strings.Join(c.opts.argsToPass, " "))
 		}
 
+		deps, err := gradle.GetDependencies(c.opts.ProjectDir)
+		if err != nil {
+			return err
+		}
+		err = cmdutils.ValidateJVMFuzzTest(c.opts.fuzzTest, &c.opts.targetMethod, deps)
+		if err != nil {
+			return err
+		}
+
 		gen = &gradleCoverage.CoverageGenerator{
 			OutputPath:   c.opts.OutputPath,
+			OutputFormat: c.opts.OutputFormat,
 			FuzzTest:     c.opts.fuzzTest,
 			TargetMethod: c.opts.targetMethod,
 			ProjectDir:   c.opts.ProjectDir,
@@ -334,8 +333,18 @@ func (c *coverageCmd) run() error {
 				"These arguments are ignored: %s", strings.Join(c.opts.argsToPass, " "))
 		}
 
+		deps, err := maven.GetDependencies(c.opts.ProjectDir, c.opts.buildStderr)
+		if err != nil {
+			return err
+		}
+		err = cmdutils.ValidateJVMFuzzTest(c.opts.fuzzTest, &c.opts.targetMethod, deps)
+		if err != nil {
+			return err
+		}
+
 		gen = &mavenCoverage.CoverageGenerator{
 			OutputPath:   c.opts.OutputPath,
+			OutputFormat: c.opts.OutputFormat,
 			FuzzTest:     c.opts.fuzzTest,
 			TargetMethod: c.opts.targetMethod,
 			ProjectDir:   c.opts.ProjectDir,
@@ -356,6 +365,11 @@ func (c *coverageCmd) run() error {
 				"These arguments are ignored: %s", strings.Join(c.opts.argsToPass, " "))
 		}
 
+		err = cmdutils.ValidateNodeFuzzTest(c.opts.ProjectDir, c.opts.fuzzTest, c.opts.testNamePattern)
+		if err != nil {
+			return err
+		}
+
 		gen = &nodeCoverage.CoverageGenerator{
 			OutputPath:      c.opts.OutputPath,
 			OutputFormat:    c.opts.OutputFormat,
@@ -371,24 +385,16 @@ func (c *coverageCmd) run() error {
 	}
 
 	if c.opts.BuildSystem != config.BuildSystemNodeJS {
-		logging.StartBuildProgressSpinner(log.BuildInProgressMsg)
+		buildPrinter := logging.NewBuildPrinter(os.Stdout, log.BuildInProgressMsg)
 		log.Infof("Building %s", pterm.Style{pterm.Reset, pterm.FgLightBlue}.Sprint(c.opts.fuzzTest))
 
 		err = gen.BuildFuzzTestForCoverage()
 		if err != nil {
-			logging.StopBuildProgressSpinnerOnError(log.BuildInProgressErrorMsg)
-			var execErr *cmdutils.ExecError
-			if errors.As(err, &execErr) {
-				// It is expected that some commands might fail due to user
-				// configuration so we print the error without the stack trace
-				// (in non-verbose mode) and silence it
-				log.Error(err)
-				return cmdutils.ErrSilent
-			}
+			buildPrinter.StopOnError(log.BuildInProgressErrorMsg)
 			return err
 		}
 
-		logging.StopBuildProgressSpinnerOnSuccess(log.BuildInProgressSuccessMsg, true)
+		buildPrinter.StopOnSuccess(log.BuildInProgressSuccessMsg, true)
 	}
 
 	reportPath, err := gen.GenerateCoverageReport()
@@ -418,7 +424,7 @@ func (c *coverageCmd) handleHTMLReport(reportPath string) error {
 		// try to open the report in the browser ...
 		err := c.openReport(htmlFile)
 		if err != nil {
-			//... if this fails print the file URI
+			// ... if this fails print the file URI
 			log.Error(err)
 			err = c.printReportURI(htmlFile)
 			if err != nil {
@@ -494,8 +500,7 @@ func (c *coverageCmd) checkDependencies() error {
 	}
 	err := dependencies.Check(deps, c.opts.ProjectDir)
 	if err != nil {
-		log.Error(err)
-		return cmdutils.WrapSilentError(err)
+		return err
 	}
 	return nil
 }

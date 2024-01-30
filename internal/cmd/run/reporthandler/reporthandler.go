@@ -1,8 +1,6 @@
 package reporthandler
 
 import (
-	"bytes"
-	"encoding/gob"
 	"fmt"
 	"io"
 	"os"
@@ -22,6 +20,7 @@ import (
 	"code-intelligence.com/cifuzz/pkg/desktop"
 	"code-intelligence.com/cifuzz/pkg/finding"
 	"code-intelligence.com/cifuzz/pkg/log"
+	"code-intelligence.com/cifuzz/pkg/parser/libfuzzer/stacktrace"
 	"code-intelligence.com/cifuzz/pkg/report"
 	"code-intelligence.com/cifuzz/util/fileutil"
 	"code-intelligence.com/cifuzz/util/stringutil"
@@ -32,8 +31,9 @@ type ReportHandlerOptions struct {
 	GeneratedCorpusDir   string
 	ManagedSeedCorpusDir string
 	UserSeedCorpusDirs   []string
-	BuildSystem          string
-	PrintJSON            bool
+	JSONOutput           io.Writer
+	PrinterOutput        io.Writer
+	SkipSavingFinding    bool
 }
 
 type ReportHandler struct {
@@ -47,11 +47,9 @@ type ReportHandler struct {
 
 	LastMetrics  *report.FuzzingMetric
 	FirstMetrics *report.FuzzingMetric
-	ErrorDetails *[]finding.ErrorDetails
+	ErrorDetails []*finding.ErrorDetails
 
 	numSeedsAtInit uint
-
-	jsonOutput io.Writer
 
 	FuzzTest string
 	Findings []*finding.Finding
@@ -62,29 +60,27 @@ func NewReportHandler(fuzzTest string, options *ReportHandlerOptions) (*ReportHa
 	h := &ReportHandler{
 		ReportHandlerOptions: options,
 		startedAt:            time.Now(),
-		jsonOutput:           os.Stdout,
 		FuzzTest:             fuzzTest,
 	}
 
-	// When --json was used, we don't want anything but JSON output on
-	// stdout, so we make the printer use stderr.
-	var printerOutput *os.File
-	if h.PrintJSON {
-		printerOutput = os.Stderr
-	} else {
-		printerOutput = os.Stdout
+	if options.JSONOutput == nil {
+		h.JSONOutput = io.Discard
+	}
+	if options.PrinterOutput == nil {
+		h.PrinterOutput = io.Discard
 	}
 
 	// Use an updating printer if the output stream is a TTY
 	// and plain style is not enabled
-	if term.IsTerminal(int(printerOutput.Fd())) && !log.PlainStyle() {
-		h.printer, err = metrics.NewUpdatingPrinter(printerOutput)
+
+	if file, ok := h.PrinterOutput.(*os.File); ok && term.IsTerminal(int(file.Fd())) && !log.PlainStyle() {
+		h.printer, err = metrics.NewUpdatingPrinter(h.PrinterOutput)
 		if err != nil {
 			return nil, err
 		}
 		h.usingUpdatingPrinter = true
 	} else {
-		h.printer = metrics.NewLinePrinter(printerOutput)
+		h.printer = metrics.NewLinePrinter(h.PrinterOutput)
 	}
 
 	return h, nil
@@ -93,12 +89,17 @@ func NewReportHandler(fuzzTest string, options *ReportHandlerOptions) (*ReportHa
 func (h *ReportHandler) Handle(r *report.Report) error {
 	var err error
 
-	if r.SeedCorpus != "" {
-		h.ManagedSeedCorpusDir = r.SeedCorpus
-	}
-
-	if r.GeneratedCorpus != "" {
-		h.GeneratedCorpusDir = r.GeneratedCorpus
+	if r.SeedCorpus != "" || r.GeneratedCorpus != "" {
+		// This report was only sent to update the seed corpus directory path
+		// which we use later to count the number of seeds. We don't want to
+		// print the report, so we return early.
+		if r.SeedCorpus != "" {
+			h.ManagedSeedCorpusDir = r.SeedCorpus
+		}
+		if r.GeneratedCorpus != "" {
+			h.GeneratedCorpusDir = r.GeneratedCorpus
+		}
+		return nil
 	}
 
 	if r.Status == report.RunStatusInitializing && !h.initStarted {
@@ -110,11 +111,21 @@ func (h *ReportHandler) Handle(r *report.Report) error {
 		} else {
 			log.Info("Initializing fuzzer with ", pterm.FgLightCyan.Sprintf("%d", r.NumSeeds), " seed inputs")
 		}
+
+		// Start the updating printer to show metrics while the fuzzer runs
+		// the seeds
+		h.printer.Start()
 	}
 
 	if r.Status == report.RunStatusRunning && !h.initFinished {
 		log.Info("Successfully initialized fuzzer with seed inputs")
 		h.initFinished = true
+
+		// Ensure that the updating printer is started. It should already
+		// have been started above during initialization, but we do it
+		// again here in case no INITIALIZING report was received.
+		// In case the printer is already started, this is a no-op.
+		h.printer.Start()
 	}
 
 	if r.Metric != nil {
@@ -133,40 +144,46 @@ func (h *ReportHandler) Handle(r *report.Report) error {
 			h.PrintFindingInstruction()
 		}
 
-		err := h.handleFinding(r.Finding, !h.PrintJSON)
+		err = h.handleFinding(r.Finding)
 		if err != nil {
 			return err
 		}
 	}
 
-	// Print report as JSON if the --json flag was specified
-	if h.PrintJSON {
-		var jsonString string
-		// Print with color if the output stream is a TTY
-		if file, ok := h.jsonOutput.(*os.File); !ok || !term.IsTerminal(int(file.Fd())) {
-			bytes, err := prettyjson.Marshal(r)
-			if err != nil {
-				return errors.WithStack(err)
-			}
-			jsonString = string(bytes)
-		} else {
-			jsonString, err = stringutil.ToJSONString(r)
-			if err != nil {
-				return err
-			}
-		}
-		if h.usingUpdatingPrinter {
-			// Clear the updating printer
-			h.printer.(*metrics.UpdatingPrinter).Clear()
-		}
-		_, _ = fmt.Fprintln(h.jsonOutput, jsonString)
-		return nil
+	if h.JSONOutput != io.Discard && h.usingUpdatingPrinter {
+		// Clear the updating printer
+		h.printer.(*metrics.UpdatingPrinter).Clear()
+	}
+
+	err = h.writeJSONReport(r)
+	if err != nil {
+		return err
 	}
 
 	return nil
 }
 
-func (h *ReportHandler) handleFinding(f *finding.Finding, print bool) error {
+func (h *ReportHandler) writeJSONReport(r *report.Report) error {
+	var jsonString string
+	var err error
+	// Print with color if the output stream is a TTY
+	if file, ok := h.JSONOutput.(*os.File); ok && term.IsTerminal(int(file.Fd())) {
+		bytes, err := prettyjson.Marshal(r)
+		if err != nil {
+			return errors.WithStack(err)
+		}
+		jsonString = string(bytes)
+	} else {
+		jsonString, err = stringutil.ToJSONString(r)
+		if err != nil {
+			return err
+		}
+	}
+	_, _ = fmt.Fprintln(h.JSONOutput, jsonString)
+	return nil
+}
+
+func (h *ReportHandler) handleFinding(f *finding.Finding) error {
 	var err error
 
 	f.CreatedAt = time.Now()
@@ -194,16 +211,20 @@ func (h *ReportHandler) handleFinding(f *finding.Finding, print bool) error {
 	// anymore, but in a subsequent run the fuzzer finds a different
 	// crashing input which causes the crash again. We do want to
 	// produce a distinct new finding in that case.
-	var b bytes.Buffer
-	err = gob.NewEncoder(&b).Encode(f.StackTrace)
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	nameSeed := append(b.Bytes(), f.InputData...)
+	nameSeed := append(stacktrace.EncodeStackTrace(f.StackTrace), f.InputData...)
 	f.Name = names.GetDeterministicName(nameSeed)
 
-	if f.InputFile != "" {
-		err = f.CopyInputFileAndUpdateFinding(h.ProjectDir, h.ManagedSeedCorpusDir, h.BuildSystem)
+	if f.InputFile != "" && !h.SkipSavingFinding {
+		if h.ManagedSeedCorpusDir == "" {
+			// Handle the case that the seed corpus directory was not set. In
+			// the case of Java fuzz tests, the seed corpus directory is
+			// printed by Jazzer. We parse that output and send it to the
+			// report handler via a report with an empty finding. If we did
+			// not receive that report yet, we cannot copy the input file to
+			// the seed corpus directory.
+			return errors.New("finding before seed corpus directory was set")
+		}
+		err = f.CopyInputFileAndUpdateFinding(h.ProjectDir, h.ManagedSeedCorpusDir)
 		if err != nil {
 			return err
 		}
@@ -212,14 +233,13 @@ func (h *ReportHandler) handleFinding(f *finding.Finding, print bool) error {
 	f.FuzzTest = h.FuzzTest
 
 	// Do not mutate f after this call.
-	err = f.Save(h.ProjectDir)
-	if err != nil {
-		return err
+	if !h.SkipSavingFinding {
+		err = f.Save(h.ProjectDir)
+		if err != nil {
+			return err
+		}
 	}
 
-	if !print {
-		return nil
-	}
 	log.Finding(f.ShortDescriptionWithName())
 
 	desktop.Notify("cifuzz finding", f.ShortDescriptionWithName())
@@ -316,7 +336,11 @@ func (h *ReportHandler) PrintFinalMetrics() error {
 			execs := h.LastMetrics.TotalExecutions - h.FirstMetrics.TotalExecutions
 			averageExecs = uint64(float64(execs) / (float64(metricsDuration.Milliseconds()) / 1000))
 		}
-		averageExecsStr = metrics.NumberString("%d", averageExecs)
+		if averageExecs > 0 {
+			averageExecsStr = metrics.NumberString("%d", averageExecs)
+		} else {
+			averageExecsStr = metrics.NumberString("n/a")
+		}
 	}
 
 	// Round towards the next larger second to avoid that very short
@@ -333,7 +357,7 @@ func (h *ReportHandler) PrintFinalMetrics() error {
 
 	w := tabwriter.NewWriter(log.NewPTermWriter(os.Stderr), 0, 0, 1, ' ', 0)
 	for _, line := range lines {
-		_, err := fmt.Fprintln(w, line)
+		_, err = fmt.Fprintln(w, line)
 		if err != nil {
 			return errors.WithStack(err)
 		}
@@ -361,7 +385,7 @@ func (h *ReportHandler) countCorpusEntries() (uint, error) {
 			}
 			info, err := d.Info()
 			if err != nil {
-				return err
+				return errors.WithStack(err)
 			}
 			// Don't count empty files, same as libFuzzer
 			if info.Size() != 0 {

@@ -1,0 +1,7 @@
+==49173== Path Traversal in openSync(): called with '../../jaz_zer*'
+MS: 2 ChangeBit-zz-nodejs-testdata-2875010541/path-traversal/PathTraversal.fuzz.js:5:6
+MS: 2 ChangeBit-CMP- DE: "../../jaz_zer"-; base unit: adc83b19e793491b1c6ea0fd8b46cd9f32e592fc
+0x2e,0x2e,0x2f,0x2e,0x2e,0x2f,0x6a,0x61,0x7a,0x5f,0x7a,0x65,0x72,0x2a,
+../../jaz_zer*
+artifact_prefix='/tmp/cifuzz-nodejs-testdata-2875010541/path-traversal/PathTraversal.fuzz/Test_path_traversal/'; Test unit written to /tmp/cifuzz-nodejs-testdata-2875010541/path-traversal/PathTraversal.fuzz/Test_path_traversal/crash-e70d3633d6cbecebd7ba9969327184a549379d22
+Base64: Li4vLi4vamF6X3plcio=

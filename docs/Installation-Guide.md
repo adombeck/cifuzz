@@ -65,7 +65,7 @@ that one instead.
 To uninstall cifuzz and delete the corresponding registry entries:
 
 ```bash
-rd /s %APPDATA%/cifuzz
+rd /s %APPDATA%\cifuzz
 
 reg delete "HKLM\Software\Kitware\CMake\Packages\cifuzz" /f 2> nul
 reg delete "HKCU\Software\Kitware\CMake\Packages\cifuzz" /f 2> nul

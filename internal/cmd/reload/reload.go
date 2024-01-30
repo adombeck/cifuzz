@@ -9,7 +9,6 @@ import (
 	"code-intelligence.com/cifuzz/internal/cmdutils"
 	"code-intelligence.com/cifuzz/internal/config"
 	"code-intelligence.com/cifuzz/pkg/dependencies"
-	"code-intelligence.com/cifuzz/pkg/log"
 )
 
 type options struct {
@@ -46,8 +45,7 @@ func newWithOptions(opts *options) *cobra.Command {
 			bindFlags()
 			err := config.FindAndParseProjectConfig(opts)
 			if err != nil {
-				log.Errorf(err, "Failed to parse cifuzz.yaml: %v", err.Error())
-				return cmdutils.WrapSilentError(err)
+				return err
 			}
 			return nil
 		},
@@ -115,8 +113,7 @@ func (c *reloadCmd) checkDependencies() error {
 	}
 	err := dependencies.Check(deps, c.opts.ProjectDir)
 	if err != nil {
-		log.Error(err)
-		return cmdutils.WrapSilentError(err)
+		return err
 	}
 	return nil
 }

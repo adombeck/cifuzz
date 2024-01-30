@@ -4,7 +4,6 @@ FROM {{ .Base }}
 
 COPY --from=cifuzz-cli /bin/cifuzz /bin/cifuzz
 
-ENV CIFUZZ_PRERELEASE=1
 COPY . /cifuzz/.
 WORKDIR /cifuzz
-CMD /bin/cifuzz execute
+ENTRYPOINT ["cifuzz", "execute"]

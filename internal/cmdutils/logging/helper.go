@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/pkg/errors"
 )
 
 func CreateLogDir(projectDir string) (string, error) {
@@ -11,7 +13,7 @@ func CreateLogDir(projectDir string) (string, error) {
 	// create logs dir if it doesn't exist
 	err := os.MkdirAll(logDir, 0700)
 	if err != nil {
-		return "", err
+		return "", errors.Wrap(err, "Failed to create directory for log file")
 	}
 
 	return logDir, nil

@@ -1,21 +1,17 @@
 package container
 
 import (
-	"bufio"
 	"context"
 	_ "embed"
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
+	"strings"
 	"text/template"
 
 	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/pkg/jsonmessage"
-	"github.com/moby/term"
 	"github.com/otiai10/copy"
 	"github.com/pkg/errors"
-	"github.com/spf13/viper"
 
 	"code-intelligence.com/cifuzz/internal/bundler/archive"
 	"code-intelligence.com/cifuzz/internal/version"
@@ -36,17 +32,56 @@ type dockerfileConfig struct {
 	Base        string
 }
 
-// BuildImageFromBundle creates an image based on an existing bundle
-func BuildImageFromBundle(bundlePath string) error {
+// BuildImageFromBundle creates an image based on an existing bundle.
+func BuildImageFromBundle(bundlePath string) (string, error) {
 	buildContextDir, err := prepareBuildContext(bundlePath)
 	if err != nil {
-		return err
+		return "", err
 	}
 	return buildImageFromDir(buildContextDir)
 }
 
+// UploadImage uploads an image to a registry.
+func UploadImage(imageID string, registry string) error {
+	log.Debugf("Start uploading image %s to %s", imageID, registry)
+
+	dockerClient, err := GetDockerClient()
+	if err != nil {
+		return err
+	}
+	// TODO: make the building/pushing cancellable with SIGnals
+	ctx := context.Background()
+
+	remoteTag := fmt.Sprintf("%s:%s", strings.ToLower(registry), imageID)
+	log.Debugf("Tag used for upload: %s", remoteTag)
+
+	err = dockerClient.ImageTag(ctx, imageID, remoteTag)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	regAuth, err := RegistryAuth(registry)
+	if err != nil {
+		return err
+	}
+
+	opts := types.ImagePushOptions{RegistryAuth: regAuth}
+	res, err := dockerClient.ImagePush(ctx, remoteTag, opts)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	defer res.Close()
+
+	_, err = parseImageBuildOutput(res)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // prepareBuildContext takes a existing artifact bundle, extracts it
-// and adds needed files/information
+// and adds needed files/information.
 func prepareBuildContext(bundlePath string) (string, error) {
 	// extract bundle to a temporary directory
 	buildContextDir, err := os.MkdirTemp("", "bundle-extract")
@@ -56,14 +91,14 @@ func prepareBuildContext(bundlePath string) (string, error) {
 
 	err = archive.Extract(bundlePath, buildContextDir)
 	if err != nil {
-		return "", err
+		return "", errors.WithMessagef(err, "Failed to extract bundle to %s", buildContextDir)
 	}
 
 	// read metadata from bundle to use information for building
 	// the right image
 	metadata, err := archive.MetadataFromPath(filepath.Join(buildContextDir, archive.MetadataFileName))
 	if err != nil {
-		return "", err
+		return "", errors.WithMessage(err, "Failed to read bundle.yml")
 	}
 
 	// add additional files needed for the image
@@ -74,7 +109,7 @@ func prepareBuildContext(bundlePath string) (string, error) {
 	}
 	err = copyCifuzz(buildContextDir)
 	if err != nil {
-		return "", err
+		return "", errors.WithMessagef(err, "Failed to copy CI Fuzz binaries to %s", buildContextDir)
 	}
 
 	log.Debugf("Prepared build context for fuzz container image at %s", buildContextDir)
@@ -83,16 +118,16 @@ func prepareBuildContext(bundlePath string) (string, error) {
 }
 
 // builds an image based on an existing directory
-func buildImageFromDir(buildContextDir string) error {
-	imageTar, err := createImageTar(buildContextDir)
+func buildImageFromDir(buildContextDir string) (string, error) {
+	imageTar, err := CreateImageTar(buildContextDir)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer fileutil.Cleanup(imageTar.Name())
 
-	dockerClient, err := getDockerClient()
+	dockerClient, err := GetDockerClient()
 	if err != nil {
-		return errors.WithStack(err)
+		return "", err
 	}
 
 	ctx := context.Background()
@@ -105,38 +140,21 @@ func buildImageFromDir(buildContextDir string) error {
 	}
 	res, err := dockerClient.ImageBuild(ctx, imageTar, opts)
 	if err != nil {
-		return errors.WithStack(err)
+		return "", errors.WithStack(err)
 	}
 	defer res.Body.Close()
 
-	if viper.GetBool("verbose") {
-		fd, isTerminal := term.GetFdInfo(os.Stderr)
-		err = jsonmessage.DisplayJSONMessagesStream(res.Body, os.Stderr, fd, isTerminal, nil)
-		if err != nil {
-			return errors.WithStack(err)
-		}
-	} else {
-		// Read messages from the docker daemon
-		scanner := bufio.NewScanner(res.Body)
-		scanner.Split(bufio.ScanLines)
-		for scanner.Scan() {
-			// If scanner.Text matches a regex for "Step X/Y" then extract the current step X and all steps Y
-			stepRegex := regexp.MustCompile(`^{"stream":"Step (?P<currentStep>\d+)/(?P<totalSteps>\d+) : `)
-			if stepRegex.MatchString(scanner.Text()) {
-				matches := stepRegex.FindStringSubmatch(scanner.Text())
-				stepString := fmt.Sprintf("%s (Step %s/%s)", log.ContainerBuildInProgressMsg, matches[1], matches[2])
-				log.UpdateCurrentProgressSpinner(stepString)
-			}
-		}
+	imageID, err := parseImageBuildOutput(res.Body)
+	if err != nil {
+		return "", err
 	}
-
-	log.Debugf("Created fuzz container image with tags %s", opts.Tags)
-	return nil
+	log.Debugf("Created fuzz container image with ID %s and tags %s", imageID, opts.Tags)
+	return imageID, nil
 }
 
 // creates a tar archive that can be used for building an image
 // based on a given directory
-func createImageTar(buildContextDir string) (*os.File, error) {
+func CreateImageTar(buildContextDir string) (*os.File, error) {
 	imageTar, err := os.CreateTemp("", "*_image.tar")
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -151,7 +169,11 @@ func createImageTar(buildContextDir string) (*os.File, error) {
 	}
 
 	// the client.BuildImage from docker expects an unclosed io.Reader / os.File
-	return os.Open(imageTar.Name())
+	file, err := os.Open(imageTar.Name())
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	return file, nil
 }
 
 func createDockerfile(path string, baseImage string) error {
@@ -165,7 +187,7 @@ func createDockerfile(path string, baseImage string) error {
 	if err != nil {
 		return errors.WithStack(err)
 	}
-	dockerfile, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0o655)
+	dockerfile, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0o644)
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -198,7 +220,7 @@ func copyCifuzz(buildContextDir string) error {
 	ensureCifuzzScriptPath := filepath.Join(buildContextDir, "ensure-cifuzz.sh")
 	err = os.WriteFile(ensureCifuzzScriptPath, []byte(ensureCifuzzScript), 0o755)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	return nil

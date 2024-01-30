@@ -80,12 +80,12 @@ func absoluteBazelFuzzTestLabels(toComplete string) ([]string, cobra.ShellCompDi
 
 	workSpace, err := getWorkspacePath()
 	if err != nil {
-		log.Error(err)
+		log.Error(errors.WithMessage(err, "Failed to get path to bazel workspace"))
 		return nil, cobra.ShellCompDirectiveError
 	}
 	buildFiles, err := findBazelBuildFiles(toComplete, workSpace)
 	if err != nil {
-		log.Error(err)
+		log.Error(errors.WithMessage(err, "Failed to find bazel build files"))
 		return nil, cobra.ShellCompDirectiveError
 	}
 
@@ -102,7 +102,7 @@ func absoluteBazelFuzzTestLabels(toComplete string) ([]string, cobra.ShellCompDi
 		targetNames, err := findTargetsInBuildFile(buildFile)
 		if err != nil {
 			// Command completion is best-effort: Do not fail on errors
-			log.Error(err)
+			log.Error(errors.WithMessagef(err, "Failed to find absolute targets in bazel build file %s", buildFile))
 			continue
 		}
 		for _, name := range targetNames {
@@ -118,12 +118,12 @@ func relativeBazelFuzzTestLabels(toComplete string) ([]string, cobra.ShellCompDi
 
 	workDir, err := os.Getwd()
 	if err != nil {
-		log.Error(err)
+		log.Error(errors.Wrap(err, "Failed to get path to current working directory"))
 		return nil, cobra.ShellCompDirectiveError
 	}
 	buildFiles, err := findBazelBuildFiles(toComplete, workDir)
 	if err != nil {
-		log.Error(err)
+		log.Error(errors.WithMessage(err, "Failed to find bazel build files"))
 		return nil, cobra.ShellCompDirectiveError
 	}
 
@@ -131,7 +131,7 @@ func relativeBazelFuzzTestLabels(toComplete string) ([]string, cobra.ShellCompDi
 		targetNames, err := findTargetsInBuildFile(buildFile)
 		if err != nil {
 			// Command completion is best-effort: Do not fail on errors
-			log.Error(err)
+			log.Error(errors.WithMessagef(err, "Failed to find relative targets in bazel build file %s", buildFile))
 			continue
 		}
 
@@ -172,7 +172,7 @@ func validJVMFuzzTests(projectDir string, toComplete string) ([]string, cobra.Sh
 	testDirs := []string{
 		filepath.Join(projectDir, "src", "test"),
 	}
-	fuzzTests, err := cmdutils.ListJVMFuzzTests(testDirs, toComplete)
+	fuzzTests, err := cmdutils.ListJVMFuzzTestsByRegex(testDirs, toComplete)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveError
 	}
@@ -182,7 +182,7 @@ func validJVMFuzzTests(projectDir string, toComplete string) ([]string, cobra.Sh
 // validNodeFuzzTests returns a list of valid Node.js fuzz test identifiers
 // (i.e. the fully qualified class name of the fuzz test)
 func validNodeFuzzTests(projectDir string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	fuzzTests, err := cmdutils.ListNodeFuzzTests(projectDir, toComplete)
+	fuzzTests, err := cmdutils.ListNodeFuzzTestsByRegex(projectDir, toComplete)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveError
 	}
@@ -195,7 +195,7 @@ func findBazelBuildFiles(toComplete string, dir string) ([]string, error) {
 	var buildFiles []string
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 
 		path, err = filepath.Rel(dir, path)
@@ -225,7 +225,7 @@ func findBazelBuildFiles(toComplete string, dir string) ([]string, error) {
 func findTargetsInBuildFile(filePath string) (map[string]string, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	// Read build file and remove comments and newlines, which is
@@ -257,7 +257,7 @@ func findTargetsInBuildFile(filePath string) (map[string]string, error) {
 func getWorkspacePath() (string, error) {
 	workDir, err := os.Getwd()
 	if err != nil {
-		return "", err
+		return "", errors.WithStack(err)
 	}
 
 	exists, err := fileutil.Exists(filepath.Join(workDir, "WORKSPACE"))

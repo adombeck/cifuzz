@@ -2,7 +2,8 @@
 
 ## Release process
 
-For more information, see [how to create and publish a new release](./docs/RELEASE.md).
+We are using a automatic release process based on conventional commits
+and semantic versioning.
 
 ## Building from Source (Linux / macOS)
 
@@ -11,8 +12,11 @@ For more information, see [how to create and publish a new release](./docs/RELEA
 #### Build dependencies:
 
 - [git](https://git-scm.com/)
-- [go >= 1.20](https://go.dev/doc/install)
+- [go >= 1.21](https://go.dev/doc/install)
 - [libcap](https://man7.org/linux/man-pages/man3/libcap.3.html)
+- Java JDK >= 8 (e.g. [OpenJDK](https://openjdk.java.net/install/) or
+  [Zulu](https://www.azul.com/downloads/zulu-community/))
+- [Maven](https://maven.apache.org/install.html)
 
 #### Test dependencies:
 

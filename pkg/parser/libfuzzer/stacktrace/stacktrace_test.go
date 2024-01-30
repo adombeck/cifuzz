@@ -6,7 +6,10 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"code-intelligence.com/cifuzz/pkg/java/sourcemap"
 )
 
 func TestStackTrace(t *testing.T) {
@@ -16,7 +19,8 @@ func TestStackTrace(t *testing.T) {
 	// doesn't have to exist or be cleaned up, it just has to be a valid
 	// absolute path on the current platform, which os.TempDir() is.
 	projectDir := os.TempDir()
-	parser := NewParser(&ParserOptions{ProjectDir: projectDir})
+	parser, err := NewParser(&ParserOptions{ProjectDir: projectDir})
+	require.NoError(t, err)
 	sourceFile := filepath.Join(projectDir, "api.cpp")
 
 	var defaultStackTrace = []*StackFrame{{
@@ -173,4 +177,102 @@ func TestStackTrace(t *testing.T) {
 			require.Equal(t, tt.expectedStackTrace, trace)
 		})
 	}
+}
+
+func TestGetJavaSourceFilePath(t *testing.T) {
+	sourceFilePath := filepath.Join("src", "main", "java", "com", "example", "ExploreMe.java")
+	sourceMap := sourcemap.SourceMap{
+		JavaPackages: map[string][]string{
+			"com.example": {sourceFilePath},
+		},
+	}
+
+	parser, err := NewParser(&ParserOptions{})
+	require.NoError(t, err)
+	parser.SourceMap = &sourceMap
+
+	testCases := []struct {
+		stackFrame             *StackFrame
+		expectedSourceFilePath string
+	}{
+		{
+			stackFrame: &StackFrame{
+				SourceFile: "ExploreMe.java",
+				Function:   "com.example.ExploreMe.exploreMe",
+			},
+			expectedSourceFilePath: sourceFilePath,
+		},
+		{
+			stackFrame: &StackFrame{
+				SourceFile: "FuzzTestCase.java",
+				Function:   "com.example.FuzzTestCase.myFuzzTest",
+			},
+			expectedSourceFilePath: "FuzzTestCase.java",
+		},
+	}
+
+	for _, tc := range testCases {
+		sourceFilePath := parser.getJavaSourceFilePath(tc.stackFrame.SourceFile, tc.stackFrame.Function)
+		assert.Equal(t, tc.expectedSourceFilePath, sourceFilePath)
+	}
+}
+
+func TestRemoveLastPart(t *testing.T) {
+	result := removeLastPart("com.example")
+	assert.Equal(t, "com", result)
+
+	result = removeLastPart(result)
+	assert.Equal(t, "", result)
+}
+
+func TestEncodeStackTrace_Empty(t *testing.T) {
+	st := []*StackFrame{}
+	result := EncodeStackTrace(st)
+	assert.Empty(t, result)
+}
+
+func TestEncodeStackTrace_Single(t *testing.T) {
+	st := []*StackFrame{
+		{
+			SourceFile:  "foo.cpp",
+			Line:        1,
+			Column:      2,
+			FrameNumber: 1,
+			Function:    "bar",
+		},
+	}
+	expected := fmt.Sprintf("#%d|%s|%s|%d|%d", st[0].FrameNumber, st[0].Function, st[0].SourceFile, st[0].Line, st[0].Column)
+	result := EncodeStackTrace(st)
+	assert.Equal(t, expected, string(result))
+}
+
+func TestEncodeStackTrace(t *testing.T) {
+	st := []*StackFrame{
+		{
+			SourceFile:  "foo",
+			Line:        1,
+			Column:      1,
+			FrameNumber: 1,
+			Function:    "bar",
+		},
+		{
+			SourceFile:  "foo",
+			Line:        2,
+			Column:      2,
+			FrameNumber: 2,
+			Function:    "bar",
+		},
+		{
+			SourceFile:  "foo",
+			Line:        3,
+			Column:      3,
+			FrameNumber: 3,
+			Function:    "bar",
+		},
+	}
+	result := EncodeStackTrace(st)
+	// 42 because it is the answert to the ultimate question
+	// and it is the amount of characters that the encoded stacktrace
+	// should countain (27 chars + 15 separators)
+	assert.Len(t, result, 42)
 }

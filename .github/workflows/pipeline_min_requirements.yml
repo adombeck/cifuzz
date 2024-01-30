@@ -4,9 +4,15 @@
 name: E2E min requirements
 
 on:
-  release:
-    types: [published]
+  workflow_run:
+    workflows: ["Release Pipeline"]
+    types:
+      - completed
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   min_requirements_linux:

@@ -16,7 +16,7 @@ import (
 func UntarFile(source, dest string) error {
 	file, err := os.Open(source)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	defer file.Close()
 	return Untar(file, dest)

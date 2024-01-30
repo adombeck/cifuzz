@@ -1,7 +1,9 @@
 package cmdutils
 
 import (
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -9,8 +11,11 @@ import (
 	"github.com/mattn/go-zglob"
 	"github.com/pkg/errors"
 
+	"code-intelligence.com/cifuzz/pkg/log"
+	"code-intelligence.com/cifuzz/pkg/runfiles"
 	"code-intelligence.com/cifuzz/util/fileutil"
 	"code-intelligence.com/cifuzz/util/regexutil"
+	"code-intelligence.com/cifuzz/util/sliceutil"
 )
 
 var jazzerFuzzTestRegex = regexp.MustCompile(`@FuzzTest|\sfuzzerTestOneInput\s*\(`)
@@ -86,11 +91,11 @@ func ConstructJVMFuzzTestIdentifier(path, testDir string) (string, error) {
 	return "", nil
 }
 
-// ListJVMFuzzTests returns a list of all fuzz tests inside
+// ListJVMFuzzTestsByRegex returns a list of all fuzz tests inside
 // the given directories.
 // The returned list contains the fully qualified class name of the fuzz test.
 // to filter files based on the fqcn you can use the prefix filter parameter
-func ListJVMFuzzTests(testDirs []string, prefixFilter string) ([]string, error) {
+func ListJVMFuzzTestsByRegex(testDirs []string, prefixFilter string) ([]string, error) {
 	var fuzzTests []string
 	for _, testDir := range testDirs {
 		exists, err := fileutil.Exists(testDir)
@@ -113,19 +118,6 @@ func ListJVMFuzzTests(testDirs []string, prefixFilter string) ([]string, error) 
 			methods, err := GetTargetMethodsFromJVMFuzzTestFile(match)
 			if err != nil {
 				return nil, err
-			}
-
-			// For files with a single fuzz method, identify it only by the file name
-			if len(methods) == 1 {
-				fuzzTestIdentifier, err := ConstructJVMFuzzTestIdentifier(match, testDir)
-				if err != nil {
-					return nil, err
-				}
-
-				if fuzzTestIdentifier != "" && (prefixFilter == "" || strings.HasPrefix(fuzzTestIdentifier, prefixFilter)) {
-					fuzzTests = append(fuzzTests, fuzzTestIdentifier)
-				}
-				continue
 			}
 
 			// add the fuzz test identifier to the fuzzTests slice
@@ -156,4 +148,73 @@ func SeparateTargetClassAndMethod(fuzzTest string) (string, string) {
 
 	split := strings.Split(fuzzTest, "::")
 	return split[0], split[1]
+}
+
+// ListJVMFuzzTests gathers all fuzz tests using the list-fuzz-tests tool.
+func ListJVMFuzzTests(classNames []string, runtimeDeps []string) ([]string, error) {
+	listFuzzTestsJar, err := runfiles.Finder.ListFuzzTestsJarPath()
+	if err != nil {
+		return nil, err
+	}
+	classPath := strings.Join(append(runtimeDeps, listFuzzTestsJar), string(os.PathListSeparator))
+
+	args := []string{
+		"-cp",
+		classPath,
+		"com.code_intelligence.cifuzz.helper.ListFuzzTests",
+	}
+	if len(classNames) > 0 {
+		args = append(args, strings.Join(classNames, " "))
+	}
+
+	javaBin, err := runfiles.Finder.JavaPath()
+	if err != nil {
+		return nil, err
+	}
+
+	cmd := exec.Command(javaBin, args...)
+	cmd.Stderr = os.Stderr
+	log.Debugf("Command: %s", cmd.String())
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, WrapExecError(errors.WithStack(err), cmd)
+	}
+
+	fuzzTests := strings.Split(strings.TrimSpace(string(output)), "\n")
+
+	return fuzzTests, nil
+}
+
+// ValidateJVMFuzzTest checks if the given fuzz test is valid.
+// If no target method is specified, it will be added.
+func ValidateJVMFuzzTest(fuzzTest string, targetMethod *string, deps []string) error {
+	allValidFuzzTests, err := ListJVMFuzzTests(nil, deps)
+	if err != nil {
+		return err
+	}
+
+	var fuzzTestsInTargetClass []string
+	for _, validFuzzTest := range allValidFuzzTests {
+		targetClass, _ := SeparateTargetClassAndMethod(validFuzzTest)
+		if targetClass == fuzzTest {
+			fuzzTestsInTargetClass = append(fuzzTestsInTargetClass, validFuzzTest)
+		}
+	}
+
+	if len(fuzzTestsInTargetClass) == 0 {
+		return WrapIncorrectUsageError(errors.Errorf("No valid fuzz tests found in %s", fuzzTest))
+	}
+
+	if *targetMethod == "" {
+		if len(fuzzTestsInTargetClass) > 1 {
+			return WrapIncorrectUsageError(errors.Errorf("Multiple fuzz tests found in %s", fuzzTest))
+		}
+		_, *targetMethod = SeparateTargetClassAndMethod(fuzzTestsInTargetClass[0])
+	}
+
+	if !sliceutil.Contains(fuzzTestsInTargetClass, fmt.Sprintf("%s::%s", fuzzTest, *targetMethod)) {
+		return WrapIncorrectUsageError(errors.Errorf("%s::%s is not a valid fuzz test", fuzzTest, *targetMethod))
+	}
+
+	return nil
 }

@@ -3,6 +3,7 @@ package cmdutils
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -10,10 +11,13 @@ import (
 	"github.com/mattn/go-zglob"
 	"github.com/pkg/errors"
 
+	"code-intelligence.com/cifuzz/pkg/log"
+	"code-intelligence.com/cifuzz/pkg/options"
+	"code-intelligence.com/cifuzz/util/envutil"
 	"code-intelligence.com/cifuzz/util/regexutil"
 )
 
-func ListNodeFuzzTests(projectDir string, prefixFilter string) ([]string, error) {
+func ListNodeFuzzTestsByRegex(projectDir string, prefixFilter string) ([]string, error) {
 	// use zglob to support globbing in windows
 	fuzzTestFiles, err := zglob.Glob(filepath.Join(projectDir, "**", "*.fuzz.*"))
 	if err != nil {
@@ -49,6 +53,64 @@ func ListNodeFuzzTests(projectDir string, prefixFilter string) ([]string, error)
 	}
 
 	return fuzzTests, nil
+}
+
+func ValidateNodeFuzzTest(projectDir string, testPathPattern string, testNamePattern string) error {
+	var env []string
+	// enable "list fuzz tests" mode for jazzer.js
+	env, err := envutil.Setenv(env, "JAZZER_LIST_FUZZTEST_NAMES", "1")
+	if err != nil {
+		return err
+	}
+	// pass test name pattern to jazzer.js
+	env, err = envutil.Setenv(env, "JAZZER_LIST_FUZZTEST_NAMES_PATTERN", testNamePattern)
+	if err != nil {
+		return err
+	}
+
+	args := []string{"jest"}
+	// pass test path pattern to jest
+	args = append(args, options.JazzerJSTestPathPatternFlag(testPathPattern))
+	// use a test name pattern, which is not matched by any fuzz test
+	args = append(args, options.JazzerJSTestNamePatternFlag("list-fuzz-tests"))
+	// disable jest reporters to prevent unnecessary output
+	args = append(args, options.JazzerJSReportersFlag(""))
+
+	cmd := exec.Command("npx", args...)
+	cmd.Dir = projectDir
+	cmd.Env, err = envutil.Copy(os.Environ(), env)
+	if err != nil {
+		return err
+	}
+	log.Debugf("Command: %s", envutil.QuotedCommandWithEnv(cmd.Args, env))
+
+	bytes, err := cmd.Output()
+	output := strings.TrimSpace(string(bytes))
+	if err != nil {
+		// in case of invalid testPathPattern jest exists with exit code 1
+		// and outputs an error message containing "No tests found"
+		if strings.Contains(output, "No tests found") {
+			return WrapIncorrectUsageError(
+				errors.Errorf("No valid fuzz test found for %s:%s", testPathPattern, testNamePattern),
+			)
+		}
+		return WrapExecError(errors.WithStack(err), cmd)
+	}
+
+	if len(output) == 0 {
+		return WrapIncorrectUsageError(
+			errors.Errorf("No valid fuzz test found for %s:%s", testPathPattern, testNamePattern),
+		)
+	}
+
+	fuzzTests := strings.Split(output, "\n")
+	if len(fuzzTests) > 1 {
+		return WrapIncorrectUsageError(
+			errors.Errorf("Multiple fuzz tests found for %s:%s", testPathPattern, testNamePattern),
+		)
+	}
+
+	return nil
 }
 
 func getTargetMethodsFromNodeTestFile(path string) ([]string, error) {

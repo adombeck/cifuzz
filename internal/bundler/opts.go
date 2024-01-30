@@ -11,7 +11,6 @@ import (
 
 	"code-intelligence.com/cifuzz/internal/cmdutils"
 	"code-intelligence.com/cifuzz/internal/config"
-	"code-intelligence.com/cifuzz/pkg/log"
 	"code-intelligence.com/cifuzz/util/sliceutil"
 )
 
@@ -38,6 +37,7 @@ type Opts struct {
 	FuzzTests       []string  `mapstructure:"-"`
 	OutputPath      string    `mapstructure:"-"`
 	BuildSystemArgs []string  `mapstructure:"-"`
+	ContainerArgs   []string  `mapstructure:"-"`
 	Stdout          io.Writer `mapstructure:"-"`
 	Stderr          io.Writer `mapstructure:"-"`
 	BuildStdout     io.Writer `mapstructure:"-"`
@@ -57,17 +57,14 @@ func (opts *Opts) Validate() error {
 
 	opts.SeedCorpusDirs, err = cmdutils.ValidateSeedCorpusDirs(opts.SeedCorpusDirs)
 	if err != nil {
-		log.Error(err)
-		return cmdutils.ErrSilent
+		return err
 	}
 
 	if opts.Dictionary != "" {
 		// Check if the dictionary exists and can be accessed
-		_, err := os.Stat(opts.Dictionary)
+		_, err = os.Stat(opts.Dictionary)
 		if err != nil {
-			err = errors.WithStack(err)
-			log.Error(err)
-			return cmdutils.ErrSilent
+			return errors.Wrapf(err, "Failed to access dictionary %s", opts.Dictionary)
 		}
 	}
 
@@ -87,9 +84,7 @@ func (opts *Opts) Validate() error {
 		}
 
 		if len(opts.FuzzTests) == 0 {
-			err := errors.Errorf("No valid targets found for patterns: %s", strings.Join(patterns, " "))
-			log.Error(err)
-			return cmdutils.WrapSilentError(err)
+			return errors.Errorf("No valid targets found for patterns: %s", strings.Join(patterns, " "))
 		}
 	}
 

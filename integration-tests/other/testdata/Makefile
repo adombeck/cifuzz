@@ -1,4 +1,7 @@
 CXXFLAGS += -std=c++11
+# Disable optimizations to avoid that the compiler removes code which
+# affects the stack trace (e.g. inlining of functions).
+CXXFLAGS += -O0
 
 clean:
 	rm -rf build *.o *.a *.so.* *.so a.out
@@ -24,6 +27,7 @@ build/my_fuzz_test: build/libexplore.so
 	@echo "Building $@"
 	mkdir -p build
 	cp -r my_fuzz_test_inputs build/
+	cp my_fuzz_test.dict build/
 	# The FUZZ_TEST_CXXFLAGS and FUZZ_TEST_LDFLAGS environment variables
 	# are set by cifuzz when it executes the build command. Those must
 	# be passed to the compiler and linker (compiling and linking is

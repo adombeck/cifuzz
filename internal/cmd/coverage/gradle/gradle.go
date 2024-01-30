@@ -11,11 +11,11 @@ import (
 
 	"github.com/pkg/errors"
 
-	"code-intelligence.com/cifuzz/internal/build/gradle"
-	"code-intelligence.com/cifuzz/internal/cmd/coverage/summary"
+	"code-intelligence.com/cifuzz/internal/build/java/gradle"
 	"code-intelligence.com/cifuzz/internal/cmdutils"
 	"code-intelligence.com/cifuzz/internal/coverage"
 	"code-intelligence.com/cifuzz/pkg/log"
+	parser "code-intelligence.com/cifuzz/pkg/parser/coverage"
 	"code-intelligence.com/cifuzz/pkg/runfiles"
 	"code-intelligence.com/cifuzz/util/executil"
 	"code-intelligence.com/cifuzz/util/stringutil"
@@ -66,7 +66,7 @@ func (cov *CoverageGenerator) BuildFuzzTestForCoverage() error {
 	// Make sure that directory exists, otherwise the command for --format=jacocoxml will fail
 	err := os.MkdirAll(cov.OutputPath, 0700)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	gradleArgs = append(gradleArgs, GradleReportTask, fmt.Sprintf("-Pcifuzz.report.output=%s", cov.OutputPath))
@@ -85,7 +85,7 @@ func (cov *CoverageGenerator) GenerateCoverageReport() (string, error) {
 		return "", errors.WithStack(err)
 	}
 	defer reportFile.Close()
-	summary.ParseJacocoXML(reportFile).PrintTable(cov.Stderr)
+	parser.ParseJacocoXMLIntoSummary(reportFile).PrintTable(cov.Stderr)
 
 	if cov.OutputFormat == coverage.FormatJacocoXML {
 		return filepath.Join(cov.OutputPath, "jacoco.xml"), nil
@@ -113,6 +113,7 @@ func (runner *GradleRunnerImpl) RunCommand(args []string) error {
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
+	defer signal.Stop(sigs)
 	go func() {
 		<-sigs
 		err = cmd.TerminateProcessGroup()

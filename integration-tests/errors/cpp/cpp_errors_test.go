@@ -3,7 +3,6 @@ package cpp
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -92,7 +91,7 @@ func TestIntegration_CPPErrors(t *testing.T) {
 			}, tc.args...)
 			cifuzzRunner.Run(t, &shared.RunOptions{
 				FuzzTest: fmt.Sprintf("%s_fuzztest", tc.id),
-				Env:      append(os.Environ(), tc.env...),
+				Env:      tc.env,
 				Args:     runArgs,
 			})
 
@@ -113,8 +112,19 @@ func TestIntegration_CPPErrors(t *testing.T) {
 					idFound = true
 					break
 				}
+
+				// Currently the alloc_dealloc_mismatch error test on macOS is flaky.
+				// The problem is that libfuzzer sometimes reports a finding with
+				// SUMMARY: AddressSanitizer: bad-free and sometimes with SUMMARY:
+				// AddressSanitizer: SEGV.
+				if runtime.GOOS == "darwin" && tc.id == "alloc_dealloc_mismatch" {
+					if f.MoreDetails.ID == "segmentation_fault" {
+						idFound = true
+						break
+					}
+				}
 			}
-			assert.True(t, idFound)
+			assert.True(t, idFound, "finding id %q not found", tc.id)
 		})
 	}
 }

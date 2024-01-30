@@ -1,0 +1,26 @@
+{
+	"run": {
+		"nid": "run-RYRCYR0J5Qpo",
+		"image": "my-cifuzz-tests:latest",
+		"fuzz_tests": [
+			{
+				"name": "com.example.FuzzTestCase::myFuzzTest",
+				"jobs": [
+					{
+						"nid": "job-gZI22TDf6vhudNvm",
+						"type": "fuzz-container",
+						"status": "pending",
+						"config": "string"
+					}
+				]
+			}
+		]
+	},
+	"links": [
+		{
+			"href": "/v3/jobs/job-gZI22TDf6vhudNvm/config",
+			"rel": "config",
+			"method": "GET"
+		}
+	]
+}

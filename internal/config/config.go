@@ -119,13 +119,13 @@ func FindAndParseProjectConfig(opts interface{}) error {
 	} else {
 		configDir, err = FindConfigDir()
 		if err != nil {
-			return err
+			return errors.WithMessage(err, "Failed to determine config directory for cifuzz.yaml")
 		}
 	}
 
 	err = ParseProjectConfig(configDir, opts)
 	if err != nil {
-		return err
+		return errors.WithMessage(err, "Failed to parse cifuzz.yaml")
 	}
 
 	return nil
@@ -149,7 +149,7 @@ func ParseProjectConfig(configDir string, opts interface{}) error {
 	if viper.GetString("timeout") != "" {
 		_, err = time.ParseDuration(viper.GetString("timeout"))
 		if err != nil {
-			return errors.WithStack(fmt.Errorf("error decoding 'timeout': %w", err))
+			return errors.Wrap(err, "error decoding 'timeout'")
 		}
 	}
 
@@ -223,7 +223,7 @@ func DetermineBuildSystem(projectDir string) (string, error) {
 func IsGradleMultiProject(projectDir string) (bool, error) {
 	matches, err := zglob.Glob(filepath.Join(projectDir, "settings.{gradle,gradle.kts}"))
 	if err != nil {
-		return false, err
+		return false, errors.WithStack(err)
 	}
 	if len(matches) == 0 {
 		return false, nil
@@ -267,8 +267,7 @@ func FindConfigDir() (string, error) {
 	}
 	for !configFileExists {
 		if dir == filepath.Dir(dir) {
-			err = fmt.Errorf("not a cifuzz project (or any of the parent directories): %s %w", ProjectConfigFile, os.ErrNotExist)
-			return "", err
+			return "", fmt.Errorf("not a cifuzz project (or any of the parent directories): %s %w", ProjectConfigFile, os.ErrNotExist)
 		}
 		dir = filepath.Dir(dir)
 		configFileExists, err = fileutil.Exists(filepath.Join(dir, ProjectConfigFile))

@@ -160,7 +160,7 @@ func NewMinijail(opts *Options) (*minijail, error) {
 	// Create chroot directory
 	chrootDir, err := os.MkdirTemp("", "minijail-chroot-")
 	if err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	// Create /tmp, /proc directories.

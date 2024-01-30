@@ -18,7 +18,7 @@ func TestMockServer(t *testing.T) {
 	server.Start(t)
 
 	// test projects endpoint
-	req, err := http.NewRequest("GET", server.Address+"/projects", nil)
+	req, err := http.NewRequest("GET", server.AddressOnHost()+"/projects", nil)
 	require.NoError(t, err)
 
 	resp, err := http.DefaultClient.Do(req)
@@ -33,7 +33,7 @@ func TestMockServer(t *testing.T) {
 	assert.Equal(t, ProjectsJSON, string(respBody))
 
 	// test error details endpoint
-	req, err = http.NewRequest("GET", server.Address+"/error-details", nil)
+	req, err = http.NewRequest("GET", server.AddressOnHost()+"/error-details", nil)
 	require.NoError(t, err)
 
 	resp, err = http.DefaultClient.Do(req)
@@ -56,7 +56,7 @@ func TestMockServerNotAuthenticated(t *testing.T) {
 	server.Start(t)
 
 	// test projects endpoint
-	req, err := http.NewRequest("GET", server.Address+"/projects", nil)
+	req, err := http.NewRequest("GET", server.AddressOnHost()+"/projects", nil)
 	require.NoError(t, err)
 
 	resp, err := http.DefaultClient.Do(req)
