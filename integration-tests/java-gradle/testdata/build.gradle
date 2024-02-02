@@ -23,7 +23,7 @@ dependencies {
 
 application {
     // Define the main class for the application.
-    mainClass = 'com.github.CodeIntelligenceTesting.cifuzz.App'
+    mainClass = 'com.github.adombeck.cifuzz.App'
 }
 
 tasks.named('test') {

@@ -463,8 +463,8 @@ remote code execution depending on available classes on the classpath.
 	at jaz.Zer.<clinit>(Zer.java:54)
 	at java.base/java.lang.Class.forName0(Native Method)
 	at java.base/java.lang.Class.forName(Class.java:315)
-	at com.github.CodeIntelligenceTesting.cifuzz.ExploreMe.exploreMe(ExploreMe.java:22)
-	at com.github.CodeIntelligenceTesting.cifuzz.FuzzTestCase.myFuzzTest(FuzzTestCase.java:13)
+	at com.github.adombeck.cifuzz.ExploreMe.exploreMe(ExploreMe.java:22)
+	at com.github.adombeck.cifuzz.FuzzTestCase.myFuzzTest(FuzzTestCase.java:13)
 	at com.code_intelligence.jazzer.runtime.FuzzTargetRunnerNatives.startLibFuzzer(Native Method)
 	at com.code_intelligence.jazzer.driver.FuzzTargetRunner.startLibFuzzer(FuzzTargetRunner.java:380)
 	at com.code_intelligence.jazzer.driver.FuzzTargetRunner.startLibFuzzer(FuzzTargetRunner.java:254)
@@ -492,8 +492,8 @@ Base64: QGphei5aZXIKLR8AACEAHw==`,
 							"	at jaz.Zer.<clinit>(Zer.java:54)",
 							"	at java.base/java.lang.Class.forName0(Native Method)",
 							"	at java.base/java.lang.Class.forName(Class.java:315)",
-							"	at com.github.CodeIntelligenceTesting.cifuzz.ExploreMe.exploreMe(ExploreMe.java:22)",
-							"	at com.github.CodeIntelligenceTesting.cifuzz.FuzzTestCase.myFuzzTest(FuzzTestCase.java:13)",
+							"	at com.github.adombeck.cifuzz.ExploreMe.exploreMe(ExploreMe.java:22)",
+							"	at com.github.adombeck.cifuzz.FuzzTestCase.myFuzzTest(FuzzTestCase.java:13)",
 							"	at com.code_intelligence.jazzer.runtime.FuzzTargetRunnerNatives.startLibFuzzer(Native Method)",
 							"	at com.code_intelligence.jazzer.driver.FuzzTargetRunner.startLibFuzzer(FuzzTargetRunner.java:380)",
 							"	at com.code_intelligence.jazzer.driver.FuzzTargetRunner.startLibFuzzer(FuzzTargetRunner.java:254)",
@@ -507,7 +507,7 @@ Base64: QGphei5aZXIKLR8AACEAHw==`,
 							"Base64: QGphei5aZXIKLR8AACEAHw==",
 						},
 						StackTrace: []*stacktrace.StackFrame{
-							{SourceFile: "com.github.CodeIntelligenceTesting.cifuzz.ExploreMe",
+							{SourceFile: "com.github.adombeck.cifuzz.ExploreMe",
 								Line:        22,
 								Column:      0,
 								FrameNumber: 0,

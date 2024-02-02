@@ -34,14 +34,14 @@ Push the new tag to origin:
     git push origin main --tags
 
 Pushing a version tag will trigger an automatic [release
-pipeline](https://github.com/CodeIntelligenceTesting/cifuzz/actions/workflows/pipeline_release.yml)
+pipeline](https://github.com/adombeck/cifuzz/actions/workflows/pipeline_release.yml)
 on GitHub.
 
 After the pipeline has passed, a draft release is automatically created,
 including binary artifacts for all supported platforms.
 
 You can find the draft release on the [cifuzz releases page on
-GitHub](https://github.com/CodeIntelligenceTesting/cifuzz/releases).
+GitHub](https://github.com/adombeck/cifuzz/releases).
 
 ### Step 3: Fill in a short summary
 

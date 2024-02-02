@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions/checkout@v3
         with:
-          repository: CodeIntelligenceTesting/cifuzz.wiki
+          repository: adombeck/cifuzz.wiki
           path: site
 
       - name: Setup Go environment

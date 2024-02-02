@@ -84,10 +84,10 @@ and are not supported for Node.js projects.
 
 For possible libFuzzer options see https://llvm.org/docs/LibFuzzer.html#options.
 
-For advanced configuration with Jazzer parameters see https://github.com/CodeIntelligenceTesting/jazzer/blob/main/docs/advanced.md.
+For advanced configuration with Jazzer parameters see https://github.com/adombeck/jazzer/blob/main/docs/advanced.md.
 
 Fuzzer customization for Node.js projects can be specified in `.jazzerjsrc.json`
-in the root project directory. See https://github.com/CodeIntelligenceTesting/jazzer.js/blob/main/docs/jest-integration.md
+in the root project directory. See https://github.com/adombeck/jazzer.js/blob/main/docs/jest-integration.md
 for further information.
 
 #### Example Libfuzzer

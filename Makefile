@@ -37,8 +37,8 @@ project := "code-intelligence.com/cifuzz"
 # make version=1.0.0-dev [target]
 version = dev
 
-# Set IMAGE_ID to ghcr.io/codeintelligencetesting/cifuzz if it's not set
-image_id ?= ghcr.io/codeintelligencetesting/cifuzz
+# Set IMAGE_ID to ghcr.io/adombeck/cifuzz if it's not set
+image_id ?= ghcr.io/adombeck/cifuzz
 
 # Set IMAGE_TAG to IMAGE_ID:version
 image_tag ?= $(image_id):$(version)
@@ -253,7 +253,7 @@ coverage/unit: deps
 .PHONY: site/setup
 site/setup:
 	-$(RM) site
-	git clone git@github.com:CodeIntelligenceTesting/cifuzz.wiki.git site
+	git clone git@github.com:adombeck/cifuzz.wiki.git site
 
 .PHONY: site/generate
 site/generate: deps

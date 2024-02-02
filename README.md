@@ -1,44 +1,3 @@
-<div align="center">
-  <a href="https://code-intelligence.com"><img src="/docs/assets/header.png" alt="cifuzz by Code Intelligence" /></a>
-  <h1>cifuzz</h1>
-  <p>makes fuzz tests as easy as unit tests</p>
-  <a href="https://github.com/CodeIntelligenceTesting/cifuzz/releases">
-    <img src="https://img.shields.io/github/v/release/CodeIntelligenceTesting/cifuzz">
-  </a>
-  <a href="https://github.com/CodeIntelligenceTesting/cifuzz/actions/workflows/pipeline_tests.yml?query=branch%3Amain">
-    <img src="https://img.shields.io/github/actions/workflow/status/CodeIntelligenceTesting/cifuzz/pipeline_tests.yml?branch=main&logo=github" />
-  </a>
-  <a href="https://github.com/CodeIntelligenceTesting/cifuzz/blob/main/CONTRIBUTING.md">
-    <img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" />
-  </a>
-  <a href="https://github.com/CodeIntelligenceTesting/cifuzz/blob/main/LICENSE">
-    <img src="https://img.shields.io/github/license/CodeIntelligenceTesting/cifuzz" />
-  </a>
-
-  <br />
-
-<a href="https://docs.code-intelligence.com/cifuzz-cli" target="_blank">Docs</a>
-|
-<a href="https://github.com/CodeIntelligenceTesting/cifuzz/blob/main/docs/Glossary.md">Glossary</a>
-|
-<a href="https://github.com/CodeIntelligenceTesting/cifuzz/tree/main/examples">Examples</a>
-|
-<a href="https://www.code-intelligence.com/" target="_blank">Website</a>
-|
-<a href="https://www.code-intelligence.com/blog" target="_blank">Blog</a>
-|
-<a href="https://twitter.com/CI_Fuzz" target="_blank">Twitter</a>
-|
-<a href="https://www.youtube.com/channel/UCjXN5ac3tgXgtuCoSnQaEmA" target="_blank">YouTube</a>
-
-</div>
-
----
-
-> **_IMPORTANT:_** This project is under active development.
-> Be aware that the behavior of the commands or the configuration
-> can change.
-
 ## What is cifuzz
 
 **cifuzz** is a CLI tool that helps you to integrate and run fuzzing
@@ -84,15 +43,15 @@ learn how to fuzz your applications with cifuzz.**
 ## Installation
 
 You can get the
-[latest release from GitHub](https://github.com/CodeIntelligenceTesting/cifuzz/releases/latest)
+[latest release from GitHub](https://github.com/adombeck/cifuzz/releases/latest)
 or by running our install script:
 
 ```bash
-sh -c "$(curl -fsSL https://raw.githubusercontent.com/CodeIntelligenceTesting/cifuzz/main/install.sh)"
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/adombeck/cifuzz/main/install.sh)"
 ```
 
 If you are using Windows you can download
-the [latest release](https://github.com/CodeIntelligenceTesting/cifuzz/releases/latest/download/cifuzz_installer_windows_amd64.exe)
+the [latest release](https://github.com/adombeck/cifuzz/releases/latest/download/cifuzz_installer_windows_amd64.exe)
 and execute it.
 
 Do not forget to add the installation's `bin` directory to your `PATH`.
@@ -284,7 +243,7 @@ choco install microsoft-openjdk gradle
 **Info:** Currently cifuzz is **not** supporting fuzz tests running in an
 emulator or on a device, it is still possible to run local tests.
 You can find more information and an example at
-the [cifuzz-gradle-plugin](https://github.com/CodeIntelligenceTesting/cifuzz-gradle-plugin)
+the [cifuzz-gradle-plugin](https://github.com/adombeck/cifuzz-gradle-plugin)
 repository.
 
 - [Gradle](https://gradle.org/install/) >= 7.5
@@ -360,5 +319,3 @@ for possible solutions.
 
 Want to help improve cifuzz? Check out our [contributing documentation](CONTRIBUTING.md).
 There you will find instructions for building the tool locally.
-
-If you find an issue, please report it to cifuzz@code-intelligence.com.

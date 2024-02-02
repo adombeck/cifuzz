@@ -23,7 +23,7 @@ jobs:
           go-version: "1.20"
 
       - name: Install cifuzz
-        run: sh -c "$(curl -fsSL https://raw.githubusercontent.com/CodeIntelligenceTesting/cifuzz/main/install.sh)"
+        run: sh -c "$(curl -fsSL https://raw.githubusercontent.com/adombeck/cifuzz/main/install.sh)"
         shell: sh
 
       # "$HOME/cifuzz/bin" can be removed as soon as new install path is released

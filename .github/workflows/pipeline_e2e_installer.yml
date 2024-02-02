@@ -41,7 +41,7 @@ jobs:
         if: contains(matrix.os, 'macos')
         # please make sure this is in sync with the README.md / installation docs
         run: |
-          brew install llvm@11 
+          brew install llvm@11
           LLVM_PATH=$(brew --prefix llvm@11)
           echo "CC=$LLVM_PATH/bin/clang" >> $GITHUB_ENV
           echo "CXX=$LLVM_PATH/bin/clang++" >> $GITHUB_ENV
@@ -68,7 +68,7 @@ jobs:
         shell: bash
 
       - name: Download & execute latest installer
-        run: sh -c "$(curl -fsSL https://raw.githubusercontent.com/CodeIntelligenceTesting/cifuzz/main/install.sh)"
+        run: sh -c "$(curl -fsSL https://raw.githubusercontent.com/adombeck/cifuzz/main/install.sh)"
         # to make sure our install script is compatible to all the shells
         shell: sh
 
@@ -78,7 +78,7 @@ jobs:
 
       - name: Download Example Projects
         # workaround to just download a single directory from github
-        run: svn export https://github.com/CodeIntelligenceTesting/cifuzz.git/trunk/examples
+        run: svn export https://github.com/adombeck/cifuzz.git/trunk/examples
         shell: bash
 
       - uses: actions/checkout@v3

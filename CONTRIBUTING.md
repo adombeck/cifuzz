@@ -88,7 +88,7 @@ export CPPFLAGS="-I$(brew --prefix)/opt/llvm/include"
 To build **cifuzz** from source you have to execute the following steps:
 
 ```bash
-git clone https://github.com/CodeIntelligenceTesting/cifuzz.git
+git clone https://github.com/adombeck/cifuzz.git
 cd cifuzz
 make test
 make install

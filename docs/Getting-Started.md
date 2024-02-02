@@ -4,7 +4,7 @@
 options and show next steps. You can find a complete list of the available
 commands with all supported options and parameters by calling `cifuzz command
 --help` or read about them in the
-[wiki](https://github.com/CodeIntelligenceTesting/cifuzz/wiki/cifuzz).
+[wiki](https://github.com/adombeck/cifuzz/wiki/cifuzz).
 
 1. To initialize your project with cifuzz just execute `cifuzz init` in the
    root directory of your project. This will create a file named `cifuzz.yaml`

@@ -520,7 +520,7 @@ func checkExistingCIFuzz(installDir string) error {
 
 	return errors.Errorf(`cifuzz is already installed in %s.
 To avoid issues with incompatible versions, please uninstall cifuzz first.
-See https://github.com/CodeIntelligenceTesting/cifuzz/blob/main/docs/Installation-Guide.md#how-to-uninstall-cifuzz`, oldCIFuzzPath)
+See https://github.com/adombeck/cifuzz/blob/main/docs/Installation-Guide.md#how-to-uninstall-cifuzz`, oldCIFuzzPath)
 }
 
 func createCommandCompletionScript(installDir, shell string) error {

@@ -37,4 +37,4 @@ if [ -d "/internal/cifuzz_binaries" ]; then
 fi
 
 # By default, install latest production version of cifuzz from our Installer script
-sh -c "$(curl -fsSL https://raw.githubusercontent.com/CodeIntelligenceTesting/cifuzz/main/install.sh)"
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/adombeck/cifuzz/main/install.sh)"

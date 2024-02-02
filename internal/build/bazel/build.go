@@ -461,7 +461,7 @@ func PathFromLabel(label string, flags []string) (string, error) {
 //
 //	git_repository(
 //	  name = "cifuzz",
-//	  remote = "https://github.com/CodeIntelligenceTesting/cifuzz-bazel",
+//	  remote = "https://github.com/adombeck/cifuzz-bazel",
 //	  commit = "ccb0bb7f27864626f668cca6d6e87776e6f87bd",
 //	)
 //
@@ -479,7 +479,7 @@ func checkCIFuzzBazelRepoCommit() error {
 		// If the reason for the error is that the cifuzz repository is
 		// missing, produce a more helpful error message.
 		if strings.Contains(err.Error(), "target 'cifuzz' not declared in package") {
-			return cmdutils.WrapExecError(errors.Errorf(`The "cifuzz" repository is not defined in the WORKSPACE file, 
+			return cmdutils.WrapExecError(errors.Errorf(`The "cifuzz" repository is not defined in the WORKSPACE file,
 run 'cifuzz init' to see setup instructions.`), cmd)
 		}
 		return cmdutils.WrapExecError(errors.WithStack(err), cmd)
@@ -487,7 +487,7 @@ run 'cifuzz init' to see setup instructions.`), cmd)
 	matches := cifuzzCommitRegex.FindSubmatch(out)
 	if matches == nil {
 		return cmdutils.WrapExecError(errors.Errorf(
-			`Failed to parse the definition of the "cifuzz" repository in the WORKSPACE file, 
+			`Failed to parse the definition of the "cifuzz" repository in the WORKSPACE file,
 run 'cifuzz init' to see setup instructions.
 bazel query output:
 %s`, string(out)), cmd)
@@ -514,7 +514,7 @@ func checkRulesFuzzingVersion() error {
 		// missing, produce a more helpful error message.
 		if strings.Contains(err.Error(), "target 'cifuzz' not declared in package") {
 			return cmdutils.WrapExecError(errors.Errorf(
-				`The "rules_fuzzing" repository is not defined in the WORKSPACE file, 
+				`The "rules_fuzzing" repository is not defined in the WORKSPACE file,
 run 'cifuzz init' to see setup instructions.`),
 				cmd)
 		}

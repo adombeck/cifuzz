@@ -16,6 +16,6 @@ Add the following to your WORKSPACE file:
     git_repository(
         name = "cifuzz",
         commit = "%s",
-        remote = "https://github.com/CodeIntelligenceTesting/cifuzz-bazel",
+        remote = "https://github.com/adombeck/cifuzz-bazel",
     )
 

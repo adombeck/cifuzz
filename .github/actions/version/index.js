@@ -4,7 +4,7 @@ import { env } from "process";
 import { inc, clean, valid } from "semver";
 import { DateTime } from "luxon";
 
-const owner = "CodeIntelligenceTesting";
+const owner = "adombeck";
 const repo = "cifuzz";
 const octokit = getOctokit(env.INPUT_TOKEN || env.GITHUB_TOKEN);
 

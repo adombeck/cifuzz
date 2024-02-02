@@ -215,7 +215,7 @@ func getMinVersionBazel() semver.Version {
 }
 
 // CIFuzzBazelCommit is the commit of the
-// https://github.com/CodeIntelligenceTesting/cifuzz-bazel
+// https://github.com/adombeck/cifuzz-bazel
 // repository that is required by this version of cifuzz.
 //
 // Keep in sync with examples/bazel/WORKSPACE.
@@ -227,5 +227,5 @@ var RulesFuzzingHTTPArchiveRule = fmt.Sprintf(`http_archive(
         name = "rules_fuzzing",
         sha256 = "%s",
         strip_prefix = "rules_fuzzing-ca617e846d0f92e00a903903b0554ea9142e1132",
-        urls = ["https://github.com/CodeIntelligenceTesting/rules_fuzzing/archive/ca617e846d0f92e00a903903b0554ea9142e1132.tar.gz"],
+        urls = ["https://github.com/adombeck/rules_fuzzing/archive/ca617e846d0f92e00a903903b0554ea9142e1132.tar.gz"],
     )`, RulesFuzzingSHA256)

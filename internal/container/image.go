@@ -23,7 +23,7 @@ import (
 	"code-intelligence.com/cifuzz/util/fileutil"
 )
 
-const cifuzzImageBase = "ghcr.io/codeintelligencetesting/cifuzz"
+const cifuzzImageBase = "ghcr.io/adombeck/cifuzz"
 
 //go:embed ensure-cifuzz.sh
 var ensureCifuzzScript string

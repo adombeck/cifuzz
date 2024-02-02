@@ -73,7 +73,7 @@ reg delete "HKCU\Software\Kitware\CMake\Packages\cifuzz" /f 2> nul
 
 ## Using a pre-release installer
 
-The [Installer Pipeline](https://github.com/CodeIntelligenceTesting/cifuzz/actions/workflows/pipeline_installer.yml)
+The [Installer Pipeline](https://github.com/adombeck/cifuzz/actions/workflows/pipeline_installer.yml)
 creates installers (for all supported operating systems) for every
 change on the `main` branch and can also be used on other branches too.
 
