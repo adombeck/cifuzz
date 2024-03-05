@@ -25,7 +25,7 @@ require (
 	github.com/u-root/u-root v0.11.1-0.20230701062237-921c08deecd7
 	golang.org/x/net v0.12.0
 	golang.org/x/sync v0.3.0
-	golang.org/x/term v0.10.0
+	golang.org/x/term v0.18.0
 )
 
 // TODO: Revert when https://github.com/otiai10/copy/pull/94 is merged
@@ -79,7 +79,7 @@ require (
 	github.com/stretchr/testify v1.8.4
 	github.com/subosito/gotenv v1.4.2 // indirect
 	golang.org/x/exp v0.0.0-20230522175609-2e198f4a06a1
-	golang.org/x/sys v0.10.0
+	golang.org/x/sys v0.18.0
 	golang.org/x/text v0.11.0
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1
